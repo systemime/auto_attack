@@ -6,18 +6,18 @@
 
 **已具备大量 skills 的生产级基础设施雏形。** 当前机制不再依赖纯硬编码 skill 列表，已经支持 JSON manifest 规范化、目录加载、元数据索引、Top-K 候选召回、工具绑定、冲突控制、policy/profile/target 过滤、审批、queue/worker 和审计记录。
 
-仍不能称为完整大型插件生态：缺少依赖版本约束、embedding/vector retrieval、schema 级 tool contract 和更完整的 trace UI。
+仍不能称为完整大型插件生态：缺少 embedding/vector retrieval、schema 级 tool contract、schema migration 和更完整的 trace UI。
 
 ## 当前已具备
 
 | 维度 | 当前状态 |
 |---|---|
 | Registry | `python-recon` + `ToolRegistry.tools` + JSON manifest skills，by-name 缓存和 duplicate 检测。 |
-| Manifest | `skills normalize/validate`，支持单文件/目录批量规范化与原子回写；字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
+| Manifest | `skills normalize/validate`，支持单文件/目录批量规范化与原子回写；字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/dependency_versions/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
 | Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态原子写入 JSON。 |
-| Metadata routing | phase/risk/tags/capabilities/priority/needs_url/depends_on/conflicts/source 持久化到 SQLite。 |
+| Metadata routing | phase/risk/tags/capabilities/priority/needs_url/depends_on/dependency_versions/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
-| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on、priority、query term、conflicts 过滤和排序。 |
+| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选 metadata。 |
 | Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats` 覆盖候选、计划、跳过原因、回归门禁、执行耗时和 workspace 聚合统计；真实 run 写入 `skill_routing_summary` 事件。 |
@@ -28,11 +28,11 @@
 ## 大量 skills 当前处理方式
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
-2. **规范化**：manifest 支持单文件/目录批量 normalize 和 `--write` 原子回写，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
+2. **规范化**：manifest 支持单文件/目录批量 normalize 和 `--write` 原子回写，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on/dependency_versions、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
 3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
-6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on、intrusive approval 和 conflicts。
+6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on/dependency_versions、intrusive approval 和 conflicts。
 7. **解释/评估**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，`skills eval` 做路由回归，`skills stats` 聚合 skill_runs/routing events。
 8. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
 
@@ -40,19 +40,19 @@
 
 | 主流机制 | 当前状态 | 评价 |
 |---|---|---|
-| Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/depends_on/conflicts | 基础达标 |
+| Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/depends_on/dependency_versions/conflicts | 基础达标 |
 | Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata；`skills show` 可按需加载完整规范 manifest/源 JSON | 基础达标 |
 | Capability schema | `ToolSpec` 有 build/parse/needs_url，manifest 有 capabilities | 部分达标；无 JSON Schema/OpenAPI/MCP schema |
-| Dynamic filtering/routing | policy/profile/target/query/metadata selectors/depends_on/priority/conflicts | 基础达标；无 embedding/retrieval |
+| Dynamic filtering/routing | policy/profile/target/query/metadata selectors/depends_on/dependency_versions/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
 | Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` + `skills eval` + `skills stats` + `skill_routing_summary` events | 部分达标；无 trace UI |
-| Version/dependency management | manifest schema_version、agent version range、轻量 depends_on、Docker 工具版本固定 | 部分达标；无 schema migration |
+| Version/dependency management | manifest schema_version、agent version range、depends_on 版本约束、Docker 工具版本固定 | 部分达标；无 schema migration |
 | Queue/concurrency/durable execution | Redis/SQLite queue、lease、worker | 基础达标 |
 
 ## 仍然存在的差距
 
-- 已有轻量 `depends_on` 存在性/可用性约束和 agent 版本范围校验；仍缺 schema migration。
+- 已有 `depends_on` 存在性/可用性/版本约束和 agent 版本范围校验；仍缺 schema migration。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
 - router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归与 `skills stats` workspace 聚合；跨 run 的长期趋势仍不完整。
 - `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。

@@ -150,6 +150,7 @@ class SkillSpec:
     schema_version: int = SKILL_SCHEMA_VERSION
     min_agent_version: str = ""
     max_agent_version: str = ""
+    dependency_versions: tuple[tuple[str, str], ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -238,7 +239,7 @@ class Store:
               name text primary key, version text, phase text, risk text, enabled integer,
               requires_approval integer, description text, tool text, source text, tags text,
               capabilities text, priority integer, needs_url integer, conflicts text, depends_on text,
-              schema_version integer, min_agent_version text, max_agent_version text
+              schema_version integer, min_agent_version text, max_agent_version text, dependency_versions text
             );
             create table if not exists skill_runs(
               id integer primary key, ts text, skill text, target text, status text,
@@ -287,6 +288,7 @@ class Store:
             "schema_version": "integer",
             "min_agent_version": "text",
             "max_agent_version": "text",
+            "dependency_versions": "text",
         }.items():
             self.ensure_column("skills", col, typ)
         self.ensure_column("job_queue", "skill", "text")
@@ -425,8 +427,8 @@ class Store:
     def upsert_skill(self, skill: SkillSpec) -> None:
         with self.lock:
             self.db.execute(
-                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on,schema_version,min_agent_version,max_agent_version)
-                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on,schema_version,min_agent_version,max_agent_version,dependency_versions)
+                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     skill.name,
                     skill.version,
@@ -446,6 +448,7 @@ class Store:
                     int(skill.schema_version),
                     skill.min_agent_version,
                     skill.max_agent_version,
+                    json.dumps(dict(skill.dependency_versions), ensure_ascii=False),
                 ),
             )
             self.db.commit()
@@ -750,6 +753,49 @@ def _list_names(value: object) -> list[str]:
     return out
 
 
+def _dependency_specs(value: object) -> tuple[list[str], tuple[tuple[str, str], ...]]:
+    if value is None:
+        return [], ()
+    if isinstance(value, dict):
+        items = [{"name": k, "version": v} for k, v in value.items()]
+    elif isinstance(value, str):
+        items = re.split(r"[,\s]+", value)
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        items = list(value)
+    else:
+        raise ValueError("expected dependency string, object, or list")
+    names: list[str] = []
+    versions: dict[str, str] = {}
+    seen: set[str] = set()
+    for item in items:
+        constraint = ""
+        if isinstance(item, dict):
+            name = str(item.get("name", "")).strip()
+            constraint = str(item.get("version") or item.get("constraint") or "").strip()
+        else:
+            text = str(item).strip()
+            match = re.fullmatch(r"([a-zA-Z0-9_.:-]{1,120})(>=|<=|==|>|<)([a-zA-Z0-9_.:-]+)", text)
+            name, constraint = (match.group(1), match.group(2) + match.group(3)) if match else (text, "")
+        if name and not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", name):
+            raise ValueError(f"invalid skill name reference: {name}")
+        if constraint and not re.fullmatch(r"(>=|<=|==|>|<)[a-zA-Z0-9_.:-]+", constraint):
+            raise ValueError(f"invalid dependency version constraint for {name}: {constraint}")
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+        if name and constraint:
+            versions[name] = constraint
+    return names, tuple(sorted(versions.items()))
+
+
+def _version_satisfies(version: str, constraint: str) -> bool:
+    match = re.fullmatch(r"(>=|<=|==|>|<)([a-zA-Z0-9_.:-]+)", constraint or "")
+    if not match:
+        return True
+    left, right = _version_tuple(version), _version_tuple(match.group(2))
+    return {">=": left >= right, "<=": left <= right, "==": left == right, ">": left > right, "<": left < right}[match.group(1)]
+
+
 def _bool(value: object, default: bool = False) -> bool:
     if value is None:
         return default
@@ -763,7 +809,8 @@ def _default_skill_terms(name: str, phase: str, tool: str = "") -> list[str]:
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
-    return tuple(int(x) for x in re.findall(r"\d+", value or "0")[:3]) or (0,)
+    parts = [int(x) for x in re.findall(r"\d+", value or "0")[:3]] or [0]
+    return tuple((parts + [0, 0, 0])[:3])
 
 
 def _check_skill_compat(data: dict, name: str) -> tuple[int, str, str]:
@@ -804,7 +851,7 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
     if tool and not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", tool):
         raise ValueError(f"invalid tool for {name}: {tool}")
     conflicts = _list_names(data.get("conflicts", []))
-    depends_on = _list_names(data.get("depends_on", data.get("dependencies", [])))
+    depends_on, dependency_versions = _dependency_specs(data.get("depends_on", data.get("dependencies", [])))
     if name in depends_on:
         raise ValueError(f"skill cannot depend on itself: {name}")
     auto_terms = _default_skill_terms(name, phase, tool)
@@ -826,6 +873,7 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
         "needs_url": _bool(data.get("needs_url"), False),
         "conflicts": conflicts,
         "depends_on": depends_on,
+        "dependency_versions": dict(dependency_versions),
     }
 
 
@@ -849,6 +897,7 @@ def skill_to_manifest(skill: SkillSpec) -> dict:
         "needs_url": skill.needs_url,
         "conflicts": list(skill.conflicts),
         "depends_on": list(skill.depends_on),
+        "dependency_versions": dict(skill.dependency_versions),
         "executable": bool(skill.tool),
     }
 
@@ -865,6 +914,7 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
         "priority": skill.priority,
         "executable": bool(skill.tool),
         "depends_on": list(skill.depends_on),
+        "dependency_versions": dict(skill.dependency_versions),
         "description": skill.description[:300],
     }
 
@@ -923,7 +973,7 @@ def filter_skill_rows(registry: SkillRegistry, args: argparse.Namespace) -> tupl
             continue
         if getattr(args, "capability", "") and args.capability not in skill.capabilities:
             continue
-        text = " ".join((skill.name, skill.phase, skill.risk, skill.description, *skill.tags, *skill.capabilities, *skill.depends_on)).lower()
+        text = " ".join((skill.name, skill.phase, skill.risk, skill.description, *skill.tags, *skill.capabilities, *skill.depends_on, *dict(skill.dependency_versions).values())).lower()
         if query_terms and not all(term in text for term in query_terms):
             continue
         row = skill_list_row(registry, skill, query_terms)
@@ -1286,6 +1336,7 @@ class SkillRegistry:
                 str(path), tuple(spec.get("tags", [])), tuple(spec.get("capabilities", [])), int(spec.get("priority", 50)),
                 bool(spec.get("needs_url", False) or (tool and tool.needs_url)), tuple(spec.get("conflicts", [])), tuple(spec.get("depends_on", [])),
                 int(spec.get("schema_version", SKILL_SCHEMA_VERSION)), str(spec.get("min_agent_version", "")), str(spec.get("max_agent_version", "")),
+                tuple(sorted((spec.get("dependency_versions") or {}).items())),
             ))
         return out
 
@@ -1367,10 +1418,14 @@ class SkillRegistry:
         return ""
 
     def _dependency_skip_reason(self, skill: SkillSpec, target: Target, profile: str, policy: Policy | None = None) -> str:
+        version_constraints = dict(skill.dependency_versions)
         for name in skill.depends_on:
             dep = self.get(name)
             if not dep:
                 return f"missing dependency: {name}"
+            constraint = version_constraints.get(name, "")
+            if constraint and not _version_satisfies(dep.version, constraint):
+                return f"dependency version mismatch: {name} {constraint} (found {dep.version})"
             if not dep.enabled:
                 return f"disabled dependency: {name}"
             dep_tool = dep.tool
@@ -2527,12 +2582,19 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 ok = False
                 rows.append({"path": str(path), "ok": False, "error": str(exc)})
         known = {"python-recon", *(t.name for t in tools.tools), *manifests}
+        known_versions = {"python-recon": "1", **{t.name: "1" for t in tools.tools}, **{name: manifest.get("version", "1") for name, manifest in manifests.items()}}
         for row in rows:
             manifest = row.get("manifest") if row.get("ok") else None
             missing = [name for name in (manifest or {}).get("depends_on", []) if name not in known]
             if missing:
                 row["ok"] = False
                 row["error"] = f"missing dependencies: {missing}"
+                ok = False
+                continue
+            mismatched = [f"{name}{constraint} (found {known_versions.get(name, '')})" for name, constraint in (manifest or {}).get("dependency_versions", {}).items() if name in known_versions and not _version_satisfies(str(known_versions.get(name, "")), str(constraint))]
+            if mismatched:
+                row["ok"] = False
+                row["error"] = f"dependency version mismatch: {mismatched}"
                 ok = False
         cycle = _dependency_cycle({name: manifest.get("depends_on", []) for name, manifest in manifests.items()})
         if cycle:

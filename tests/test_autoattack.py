@@ -475,6 +475,9 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(normalized["tags"], ["web", "headers"])
             self.assertEqual(normalized["capabilities"], ["http", "headers"])
             self.assertTrue(normalized["needs_url"])
+            versioned = aa.normalize_skill_manifest({"name": "web.versioned", "description": "versioned", "depends_on": {"python-recon": ">=1"}})
+            self.assertEqual(versioned["depends_on"], ["python-recon"])
+            self.assertEqual(versioned["dependency_versions"], {"python-recon": ">=1"})
             auto = aa.normalize_skill_manifest({"name": "web.auto-headers", "description": "auto terms", "phase": "fingerprint", "tool": "httpx"})
             self.assertIn("web", auto["tags"])
             self.assertIn("httpx", auto["capabilities"])
@@ -514,6 +517,9 @@ class AutoAttackTests(unittest.TestCase):
             bad_dir = root / "bad"
             bad_dir.mkdir()
             (bad_dir / "bad.json").write_text(json.dumps({"name": "bad.dep", "description": "bad", "depends_on": ["missing.skill"]}))
+            bad_version_dir = root / "bad_version"
+            bad_version_dir.mkdir()
+            (bad_version_dir / "bad.json").write_text(json.dumps({"name": "bad.version", "description": "bad", "depends_on": {"python-recon": ">=2.0"}}))
             bad_schema = root / "bad_schema.json"
             bad_schema.write_text(json.dumps({"name": "bad.schema", "description": "bad", "schema_version": 999}))
             rc, rows = self._capture_json(["skills", "validate", str(bad_schema)])
@@ -522,6 +528,9 @@ class AutoAttackTests(unittest.TestCase):
             rc, rows = self._capture_json(["skills", "validate", str(bad_dir)])
             self.assertEqual(rc, 1)
             self.assertIn("missing dependencies", rows[0]["error"])
+            rc, rows = self._capture_json(["skills", "validate", str(bad_version_dir)])
+            self.assertEqual(rc, 1)
+            self.assertIn("dependency version mismatch", rows[0]["error"])
             cycle_dir = root / "cycle"
             cycle_dir.mkdir()
             (cycle_dir / "a.json").write_text(json.dumps({"name": "cycle.a", "description": "a", "depends_on": ["cycle.b"]}))
@@ -539,6 +548,7 @@ class AutoAttackTests(unittest.TestCase):
                 {"name": "dummy.high", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan", "priority": 90, "capabilities": ["web"], "conflicts": ["dummy.low"], "depends_on": ["dummy.base"]},
                 {"name": "dummy.low", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan low", "priority": 10, "capabilities": ["web"]},
                 {"name": "dummy.blocked", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "missing dep", "priority": 95, "depends_on": ["no.such"]},
+                {"name": "dummy.versioned", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "version mismatch", "priority": 96, "depends_on": {"dummy.base": ">=2.0"}},
                 {"name": "dummy.base", "phase": "scan", "risk": "safe", "description": "metadata dependency", "priority": 1},
                 {"name": "catalog.only", "phase": "scan", "risk": "safe", "description": "metadata only", "priority": 100},
             ]:
@@ -566,6 +576,7 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(explained["plans"][0]["depends_on"], ["dummy.base"])
             self.assertTrue(any(x["skill"] == "dummy.low" and x["reason"] == "conflict" for x in explained["skipped"]))
             self.assertTrue(any(x["skill"] == "dummy.blocked" and "missing dependency" in x["reason"] for x in explained["skipped"]))
+            self.assertTrue(any(x["skill"] == "dummy.versioned" and "version mismatch" in x["reason"] for x in explained["skipped"]))
             self.assertGreaterEqual(explained["skipped_reason_counts"].get("conflict", 0), 1)
             self.assertTrue(any(k.startswith("missing dependency") for k in explained["skipped_reason_counts"]))
             eval_file = root / "eval.json"
