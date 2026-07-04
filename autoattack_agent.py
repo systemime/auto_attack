@@ -138,6 +138,12 @@ class SkillSpec:
     description: str
     tool: ToolSpec | None = None
     enabled: bool = True
+    source: str = "builtin"
+    tags: tuple[str, ...] = ()
+    capabilities: tuple[str, ...] = ()
+    priority: int = 50
+    needs_url: bool = False
+    conflicts: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -224,7 +230,8 @@ class Store:
             );
             create table if not exists skills(
               name text primary key, version text, phase text, risk text, enabled integer,
-              requires_approval integer, description text, tool text
+              requires_approval integer, description text, tool text, source text, tags text,
+              capabilities text, priority integer, needs_url integer, conflicts text
             );
             create table if not exists skill_runs(
               id integer primary key, ts text, skill text, target text, status text,
@@ -236,12 +243,13 @@ class Store:
             );
             create table if not exists job_queue(
               id integer primary key, ts text, updated_at text, digest text unique,
-              phase text, target text, tool text, command text, status text, reason text,
+              phase text, target text, tool text, skill text, command text, status text, reason text,
               attempts integer default 0, max_attempts integer default 1,
               lease_owner text, lease_until real default 0, result_digest text, detail text
             );
             create index if not exists idx_approval_skill_target_id on approval_requests(skill,target,id);
             create index if not exists idx_skill_runs_skill_status on skill_runs(skill,status);
+            create index if not exists idx_skills_phase_risk_priority on skills(phase,risk,priority);
             create index if not exists idx_events_kind_id on events(kind,id);
             create index if not exists idx_job_queue_claim on job_queue(status,attempts,lease_until);
             """
@@ -261,6 +269,16 @@ class Store:
             "references": "text",
         }.items():
             self.ensure_column("findings", col, typ)
+        for col, typ in {
+            "source": "text",
+            "tags": "text",
+            "capabilities": "text",
+            "priority": "integer",
+            "needs_url": "integer",
+            "conflicts": "text",
+        }.items():
+            self.ensure_column("skills", col, typ)
+        self.ensure_column("job_queue", "skill", "text")
         self.db.commit()
 
     def ensure_column(self, table: str, column: str, typ: str) -> None:
@@ -390,9 +408,24 @@ class Store:
     def upsert_skill(self, skill: SkillSpec) -> None:
         with self.lock:
             self.db.execute(
-                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool)
-                   values(?,?,?,?,?,?,?,?)""",
-                (skill.name, skill.version, skill.phase, skill.risk, int(skill.enabled), int(skill.requires_approval), skill.description, skill.tool.name if skill.tool else ""),
+                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts)
+                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    skill.name,
+                    skill.version,
+                    skill.phase,
+                    skill.risk,
+                    int(skill.enabled),
+                    int(skill.requires_approval),
+                    skill.description,
+                    skill.tool.name if skill.tool else "",
+                    skill.source,
+                    json.dumps(skill.tags, ensure_ascii=False),
+                    json.dumps(skill.capabilities, ensure_ascii=False),
+                    int(skill.priority),
+                    int(skill.needs_url),
+                    json.dumps(skill.conflicts, ensure_ascii=False),
+                ),
             )
             self.db.commit()
 
@@ -435,13 +468,13 @@ class Store:
             self.db.commit()
         return cur.rowcount > 0
 
-    def enqueue_job(self, tool: ToolSpec, target: Target, command: list[str], reason: str = "", max_attempts: int = 1) -> int:
+    def enqueue_job(self, tool: ToolSpec, target: Target, command: list[str], reason: str = "", max_attempts: int = 1, skill: str = "") -> int:
         digest = _digest(command)
         with self.lock:
             self.db.execute(
-                """insert or ignore into job_queue(ts,updated_at,digest,phase,target,tool,command,status,reason,max_attempts)
-                   values(?,?,?,?,?,?,?,?,?,?)""",
-                (_now(), _now(), digest, tool.phase, target.raw, tool.name, json.dumps(command), "queued", reason[:1000], max(1, int(max_attempts))),
+                """insert or ignore into job_queue(ts,updated_at,digest,phase,target,tool,skill,command,status,reason,max_attempts)
+                   values(?,?,?,?,?,?,?,?,?,?,?)""",
+                (_now(), _now(), digest, tool.phase, target.raw, tool.name, skill or tool.name, json.dumps(command), "queued", reason[:1000], max(1, int(max_attempts))),
             )
             row = self.db.execute("select id from job_queue where digest=?", (digest,)).fetchone()
             self.db.commit()
@@ -652,6 +685,112 @@ class Scope:
         return _scope_match(host, self.roots)
 
 
+ALLOWED_SKILL_PHASES = {"recon", "fingerprint", "scan", "validate", "bruteforce", "report", "test"}
+ALLOWED_SKILL_RISKS = {"safe", "intrusive"}
+
+
+def _terms(text: str) -> set[str]:
+    return {x.lower() for x in re.findall(r"[a-zA-Z0-9_.:-]{2,}", text or "")}
+
+
+def _list_str(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = re.split(r"[,\s]+", value)
+    if not isinstance(value, Sequence) or isinstance(value, (bytes, bytearray)):
+        raise ValueError("expected string or list")
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", str(item).strip().lower()).strip("-")
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text[:80])
+    return out
+
+
+def _bool(value: object, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def normalize_skill_manifest(data: dict, source: str = "") -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("skill manifest must be a JSON object")
+    name = str(data.get("name", "")).strip()
+    if not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", name):
+        raise ValueError(f"invalid skill name in {source or '<memory>'}")
+    description = str(data.get("description", "")).strip()
+    if not description:
+        raise ValueError(f"missing description for {name}")
+    phase = str(data.get("phase") or "scan").strip().lower()
+    risk = str(data.get("risk") or "safe").strip().lower()
+    if phase not in ALLOWED_SKILL_PHASES:
+        raise ValueError(f"invalid phase for {name}: {phase}")
+    if risk not in ALLOWED_SKILL_RISKS:
+        raise ValueError(f"invalid risk for {name}: {risk}")
+    try:
+        priority = max(0, min(100, int(data.get("priority", 50))))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid priority for {name}") from exc
+    tool = str(data.get("tool") or "").strip()
+    if tool and not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", tool):
+        raise ValueError(f"invalid tool for {name}: {tool}")
+    return {
+        "name": name,
+        "version": str(data.get("version") or "1").strip()[:80],
+        "phase": phase,
+        "risk": risk,
+        "requires_approval": _bool(data.get("requires_approval"), risk == "intrusive"),
+        "description": description[:1000],
+        "tool": tool,
+        "enabled": _bool(data.get("enabled"), True),
+        "tags": _list_str(data.get("tags", [])),
+        "capabilities": _list_str(data.get("capabilities", [])),
+        "priority": priority,
+        "needs_url": _bool(data.get("needs_url"), False),
+        "conflicts": _list_str(data.get("conflicts", [])),
+    }
+
+
+def skill_to_manifest(skill: SkillSpec) -> dict:
+    return {
+        "name": skill.name,
+        "version": skill.version,
+        "phase": skill.phase,
+        "risk": skill.risk,
+        "requires_approval": skill.requires_approval,
+        "description": skill.description,
+        "tool": skill.tool.name if skill.tool else "",
+        "enabled": skill.enabled,
+        "source": skill.source,
+        "tags": list(skill.tags),
+        "capabilities": list(skill.capabilities),
+        "priority": skill.priority,
+        "needs_url": skill.needs_url,
+        "conflicts": list(skill.conflicts),
+        "executable": bool(skill.tool),
+    }
+
+
+def skill_candidate_payload(skill: SkillSpec) -> dict:
+    return {
+        "name": skill.name,
+        "phase": skill.phase,
+        "risk": skill.risk,
+        "needs_url": skill.needs_url,
+        "tags": list(skill.tags),
+        "capabilities": list(skill.capabilities),
+        "priority": skill.priority,
+        "executable": bool(skill.tool),
+        "description": skill.description[:300],
+    }
+
+
 class ToolRegistry:
     def __init__(self):
         self.tools = _default_tools()
@@ -673,6 +812,9 @@ class ToolRegistry:
     def available(self) -> list[ToolSpec]:
         return [t for t in self.tools if self.is_available(t)]
 
+    def get(self, name: str) -> ToolSpec | None:
+        return next((t for t in self.tools if t.name == name), None)
+
     def plan(self, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None) -> list[ToolSpec]:
         tools = self.available()
         if selected:
@@ -693,9 +835,10 @@ class ToolRegistry:
 
 
 class SkillRegistry:
-    def __init__(self, tool_registry: ToolRegistry | None = None, config_path: Path | None = None):
+    def __init__(self, tool_registry: ToolRegistry | None = None, config_path: Path | None = None, skills_dir: Path | None = None):
         self.tool_registry = tool_registry or ToolRegistry()
         self.config_path = config_path or Path(os.getenv("AUTOATTACK_SKILLS_CONFIG", ".autoattack_skills.json"))
+        self.skills_dir = skills_dir or (Path(os.getenv("AUTOATTACK_SKILLS_DIR")) if os.getenv("AUTOATTACK_SKILLS_DIR") else None)
         self.disabled = self._load_disabled()
         self._refresh()
 
@@ -710,24 +853,111 @@ class SkillRegistry:
 
     def _refresh(self) -> None:
         skills = [
-            SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", None, "python-recon" not in self.disabled)
+            SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", None, "python-recon" not in self.disabled, "builtin", ("builtin", "recon"), ("dns", "tcp", "http"), 70, False)
         ]
         for tool in self.tool_registry.tools:
             risk = "intrusive" if tool.intrusive else "safe"
-            skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled))
+            skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled, "tool", (tool.phase,), (tool.name, tool.phase), 50, tool.needs_url))
+        skills.extend(self._load_manifest_skills())
         by_name: dict[str, SkillSpec] = {}
         duplicates: list[str] = []
+        by_tag: dict[str, list[SkillSpec]] = {}
+        by_capability: dict[str, list[SkillSpec]] = {}
+        by_phase: dict[str, list[SkillSpec]] = {}
         for skill in skills:
             if skill.name in by_name:
                 duplicates.append(skill.name)
             by_name[skill.name] = skill
+            for tag in skill.tags:
+                by_tag.setdefault(tag, []).append(skill)
+            for cap in skill.capabilities:
+                by_capability.setdefault(cap, []).append(skill)
+            by_phase.setdefault(skill.phase, []).append(skill)
         if duplicates:
             raise ValueError("duplicate skill names: " + ", ".join(sorted(set(duplicates))))
-        self._skills = skills
+        for bucket in (by_tag, by_capability, by_phase):
+            for values in bucket.values():
+                values.sort(key=lambda x: (-x.priority, x.name))
+        self._skills = sorted(skills, key=lambda x: (-x.priority, x.name))
         self._by_name = by_name
+        self._by_tag = by_tag
+        self._by_capability = by_capability
+        self._by_phase = by_phase
+        self._skillset_digest = _json_sha256({"skills": [skill_to_manifest(s) for s in self._skills]})
+
+    def _load_manifest_skills(self) -> list[SkillSpec]:
+        if not self.skills_dir or not self.skills_dir.exists():
+            return []
+        out: list[SkillSpec] = []
+        for path in sorted(self.skills_dir.rglob("*.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            spec = normalize_skill_manifest(data, source=str(path))
+            tool = self.tool_registry.get(spec["tool"]) if spec.get("tool") and hasattr(self.tool_registry, "get") else next((t for t in self.tool_registry.tools if t.name == spec["tool"]), None)
+            if spec.get("tool") and not tool:
+                raise ValueError(f"unknown tool for {spec['name']}: {spec['tool']}")
+            risk = "intrusive" if spec["risk"] == "intrusive" or bool(tool and tool.intrusive) else "safe"
+            out.append(SkillSpec(
+                spec["name"], spec["version"], spec["phase"], risk, bool(spec["requires_approval"] or risk == "intrusive"),
+                spec["description"], tool, spec["name"] not in self.disabled and bool(spec.get("enabled", True)),
+                str(path), tuple(spec.get("tags", [])), tuple(spec.get("capabilities", [])), int(spec.get("priority", 50)),
+                bool(spec.get("needs_url", False) or (tool and tool.needs_url)), tuple(spec.get("conflicts", [])),
+            ))
+        return out
+
+    @property
+    def skillset_digest(self) -> str:
+        return self._skillset_digest
 
     def all(self) -> list[SkillSpec]:
         return list(self._skills)
+
+    def candidates(self, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None, limit: int | None = None, query: str = "", executable_only: bool = False) -> list[SkillSpec]:
+        query_terms = _terms(query)
+        scored: list[tuple[int, SkillSpec]] = []
+        if profile == "quick":
+            pool = [s for phase in ("recon", "fingerprint") for s in self._by_phase.get(phase, [])]
+        elif profile != "deep":
+            pool = [s for phase, values in self._by_phase.items() if phase != "bruteforce" for s in values]
+        else:
+            pool = self._skills
+        for skill in pool:
+            if executable_only and not skill.tool:
+                continue
+            if selected and skill.name not in selected and not (skill.tool and skill.tool.name in selected):
+                continue
+            reason = self.skip_reason(skill, target, profile, selected, policy)
+            if reason:
+                continue
+            score = self.match_score(skill, query_terms)
+            scored.append((score, skill))
+        scored.sort(key=lambda item: (-item[0], -item[1].priority, item[1].name))
+        skills = [skill for _, skill in scored]
+        return skills[:limit] if limit else skills
+
+    def match_score(self, skill: SkillSpec, query_terms: set[str]) -> int:
+        score = int(skill.priority)
+        text = " ".join((skill.name, skill.phase, skill.risk, skill.description, *skill.tags, *skill.capabilities)).lower()
+        score += sum(15 for term in query_terms if term and term in text)
+        return score
+
+    def skip_reason(self, skill: SkillSpec, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None) -> str:
+        tool = skill.tool
+        if not skill.enabled:
+            return "disabled"
+        if selected and skill.name not in selected and (not tool or tool.name not in selected):
+            return "not selected"
+        if tool and not self.is_available(tool):
+            return "unavailable"
+        policy_name = tool.name if tool else skill.name
+        if policy and policy.allow_tools and policy_name not in policy.allow_tools and skill.name not in policy.allow_tools:
+            return "not allowed by policy"
+        if profile == "quick" and skill.phase not in {"recon", "fingerprint"}:
+            return "profile"
+        if profile != "deep" and skill.phase == "bruteforce":
+            return "profile"
+        if skill.needs_url and not target.is_url:
+            return "needs url"
+        return ""
 
     def is_available(self, tool: ToolSpec) -> bool:
         return getattr(self.tool_registry, "is_available", tool_available)(tool)
@@ -764,8 +994,10 @@ class SkillRegistry:
             "available": available,
             "build_ok": build_ok,
             "parse_ok": parse_ok,
+            "manifest_ok": True,
             "ok": bool(skill.enabled and build_ok and parse_ok and (available or skill.tool is None)),
         }
+
 
 
 class SkillRouter:
@@ -773,41 +1005,29 @@ class SkillRouter:
         self.skills = skills
         self.store = store
 
-    def plan(self, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None) -> list[SkillPlan]:
+    def plan(self, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None, limit: int | None = None, query: str = "") -> list[SkillPlan]:
         plans: list[SkillPlan] = []
-        for skill in self.skills.all():
+        blocked: set[str] = set()
+        for skill in self.skills.candidates(target, profile, selected, policy, limit, query, executable_only=True):
+            if skill.name in blocked:
+                continue
             tool = skill.tool
             if not tool:
                 continue
-            reason = self._skip_reason(skill, target, profile, selected, policy)
-            if reason:
-                continue
-            intrusive = tool.intrusive or bool(policy and tool.name in policy.intrusive_tools)
+            intrusive = skill.risk == "intrusive" or bool(tool and tool.intrusive) or bool(policy and ((tool and tool.name in policy.intrusive_tools) or skill.name in policy.intrusive_tools))
             plan_skill = dataclasses.replace(skill, risk="intrusive", requires_approval=True) if intrusive and skill.risk != "intrusive" else skill
             status = "ready"
             if intrusive and not allow_intrusive:
                 decision = self.store.approval_status(skill.name, target.raw) if self.store else ""
                 status = "ready" if decision == "approved" else ("denied" if decision == "denied" else "approval_required")
-            plans.append(SkillPlan(plan_skill, target, status, f"{plan_skill.phase}:{profile}", 90 if status == "ready" else 10))
+            score = self.skills.match_score(plan_skill, _terms(query)) + (40 if status == "ready" else 0)
+            plans.append(SkillPlan(plan_skill, target, status, f"{plan_skill.phase}:{profile}", score))
+            blocked.update(plan_skill.conflicts)
         return plans
 
     def _skip_reason(self, skill: SkillSpec, target: Target, profile: str, selected: set[str] | None, policy: Policy | None) -> str:
-        tool = skill.tool
-        if not skill.enabled:
-            return "disabled"
-        if selected and skill.name not in selected and (not tool or tool.name not in selected):
-            return "not selected"
-        if not tool or not self.skills.is_available(tool):
-            return "unavailable"
-        if policy and policy.allow_tools and tool.name not in policy.allow_tools:
-            return "not allowed by policy"
-        if profile == "quick" and tool.phase not in {"recon", "fingerprint"}:
-            return "profile"
-        if profile != "deep" and tool.phase == "bruteforce":
-            return "profile"
-        if tool.needs_url and not target.is_url:
-            return "needs url"
-        return ""
+        return self.skills.skip_reason(skill, target, profile, selected, policy)
+
 
 
 class Agent:
@@ -819,7 +1039,8 @@ class Agent:
         self.scope = Scope(self.targets, args.allow_out_of_scope, self.policy)
         self.registry = ToolRegistry()
         self.store = Store(workspace / "state.sqlite3")
-        self.skill_registry = SkillRegistry(self.registry)
+        self.skill_registry = SkillRegistry(self.registry, skills_dir=Path(getattr(args, "skills_dir", "") or os.getenv("AUTOATTACK_SKILLS_DIR", "")) if (getattr(args, "skills_dir", "") or os.getenv("AUTOATTACK_SKILLS_DIR", "")) else None)
+        self.args.skillset_sha256 = self.skill_registry.skillset_digest
         self.router = SkillRouter(self.skill_registry, self.store)
         for skill in self.skill_registry.all():
             self.store.upsert_skill(skill)
@@ -865,13 +1086,15 @@ class Agent:
             if jobs and steps_left > 0:
                 batch = jobs[:steps_left]
                 if getattr(self.args, "execution_mode", "local") == "queue":
-                    for tool, target, reason in batch:
+                    for pair in batch:
+                        tool, target, reason = pair[0], pair[1], pair[2]
+                        skill_name = pair[3] if len(pair) > 3 else tool.name
                         cmd = tool.build(target, self.raw_dir)
                         if cmd:
-                            job_id = self.store.enqueue_job(tool, target, cmd, reason)
+                            job_id = self.store.enqueue_job(tool, target, cmd, reason, skill=skill_name)
                             self.store.add_task(tool.phase, target.raw, tool.name, "queued", f"job={job_id} {reason}")
-                            self.store.add_skill_run(tool.name, target.raw, "queued", tool.name, _digest(cmd), reason)
-                            self.store.add_event("job_queued", {"job_id": job_id, "tool": tool.name, "target": target.raw})
+                            self.store.add_skill_run(skill_name, target.raw, "queued", tool.name, _digest(cmd), reason)
+                            self.store.add_event("job_queued", {"job_id": job_id, "skill": skill_name, "tool": tool.name, "target": target.raw})
                             if redis_queue:
                                 redis_queue.push(job_id)
                 else:
@@ -921,7 +1144,7 @@ class Agent:
         if plan.status == "ready":
             if key not in job_keys:
                 job_keys.add(key)
-                jobs.append((tool, plan.target, reason))
+                jobs.append((tool, plan.target, reason, plan.skill.name))
                 self.store.add_event("skill_planned", {"skill": plan.skill.name, "target": plan.target.raw, "reason": reason, "score": plan.score})
             return
         if plan.status == "approval_required":
@@ -970,7 +1193,8 @@ class Agent:
         def run_one(pair: tuple) -> tuple[str, str]:
             tool, target = pair[0], pair[1]
             reason = pair[2] if len(pair) > 2 else ""
-            return execute_tool_job(self.store, self.registry, self.scope, self.raw_dir, self.args, tool, target, reason)
+            skill_name = pair[3] if len(pair) > 3 else ""
+            return execute_tool_job(self.store, self.registry, self.scope, self.raw_dir, self.args, tool, target, reason, skill_name=skill_name)
 
         with futures.ThreadPoolExecutor(max_workers=max(1, self.args.max_workers)) as pool:
             list(pool.map(run_one, jobs))
@@ -1011,26 +1235,27 @@ class Agent:
             return f"LLM summary unavailable: {exc}"
 
 
-def execute_tool_job(store: Store, registry: ToolRegistry, scope: Scope, raw_dir: Path, args: argparse.Namespace, tool: ToolSpec, target: Target, reason: str = "", command: list[str] | None = None) -> tuple[str, str]:
+def execute_tool_job(store: Store, registry: ToolRegistry, scope: Scope, raw_dir: Path, args: argparse.Namespace, tool: ToolSpec, target: Target, reason: str = "", command: list[str] | None = None, skill_name: str = "") -> tuple[str, str]:
+    skill_name = skill_name or tool.name
     cmd = command or tool.build(target, raw_dir)
     if not cmd:
         return "skipped", ""
     digest = _digest(cmd)
     if not scope.allowed(target):
         store.add_task(tool.phase, target.raw, tool.name, "skipped", "out of scope or denied")
-        store.add_skill_run(tool.name, target.raw, "skipped", tool.name, digest, "out of scope or denied")
+        store.add_skill_run(skill_name, target.raw, "skipped", tool.name, digest, "out of scope or denied")
         return "skipped", digest
     if getattr(args, "resume", False):
         cached = store.get_command(digest)
         if cached and (cached.returncode == 0 or getattr(args, "retry_failed", 0) <= 0):
             store.add_task(tool.phase, target.raw, tool.name, "cached", " ".join(cmd))
             store.add_tool_run(digest, tool.name, target.raw, cmd, args.timeout, "cached", cached)
-            store.add_skill_run(tool.name, target.raw, "cached", tool.name, digest, reason)
+            store.add_skill_run(skill_name, target.raw, "cached", tool.name, digest, reason)
             store.add_event("tool_cached", {"tool": tool.name, "target": target.raw, "digest": digest})
-            _record_tool_result(store, tool, cached)
+            _record_tool_result(store, tool, cached, skill_name)
             return "cached", digest
     store.add_task(tool.phase, target.raw, tool.name, "running", " ".join(cmd))
-    store.add_skill_run(tool.name, target.raw, "running", tool.name, digest, reason)
+    store.add_skill_run(skill_name, target.raw, "running", tool.name, digest, reason)
     store.add_event("tool_start", {"tool": tool.name, "target": target.raw, "digest": digest})
     try:
         result = run_command(tool.name, target.raw, cmd, raw_dir, args.timeout)
@@ -1038,19 +1263,19 @@ def execute_tool_job(store: Store, registry: ToolRegistry, scope: Scope, raw_dir
         status = "done" if result.returncode == 0 else "failed"
         store.add_task(tool.phase, target.raw, tool.name, status, f"rc={result.returncode} {result.seconds:.1f}s")
         store.add_tool_run(digest, tool.name, target.raw, cmd, args.timeout, status, result)
-        store.add_skill_run(tool.name, target.raw, status, tool.name, digest, reason)
+        store.add_skill_run(skill_name, target.raw, status, tool.name, digest, reason)
         store.add_event("tool_done", {"tool": tool.name, "target": target.raw, "digest": digest, "status": status, "returncode": result.returncode})
-        _record_tool_result(store, tool, result)
+        _record_tool_result(store, tool, result, skill_name)
         return status, digest
     except Exception as exc:  # subprocess edge cases should not kill the run
         store.add_task(tool.phase, target.raw, tool.name, "error", str(exc))
         store.add_tool_run(digest, tool.name, target.raw, cmd, args.timeout, "error", detail=str(exc))
-        store.add_skill_run(tool.name, target.raw, "error", tool.name, digest, str(exc))
+        store.add_skill_run(skill_name, target.raw, "error", tool.name, digest, str(exc))
         store.add_event("tool_error", {"tool": tool.name, "target": target.raw, "digest": digest, "error": str(exc)})
         return "error", digest
 
 
-def _record_tool_result(store: Store, tool: ToolSpec, result: CommandResult) -> None:
+def _record_tool_result(store: Store, tool: ToolSpec, result: CommandResult, skill_name: str = "") -> None:
     observations, findings = tool.parse(result)
     for obs in observations:
         store.add_observation(obs)
@@ -1061,7 +1286,7 @@ def _record_tool_result(store: Store, tool: ToolSpec, result: CommandResult) -> 
             finding.command_digest = result.digest
         if not finding.confidence:
             finding.confidence = "medium" if result.returncode == 0 else "low"
-        finding.source_skill = finding.source_skill or result.tool
+        finding.source_skill = finding.source_skill or skill_name or result.tool
         finding.source_tool = finding.source_tool or result.tool
         store.add_finding(finding)
 
@@ -1598,35 +1823,14 @@ def _refs_from_db(value: object) -> list[str]:
 def ai_skill_candidates(targets: Sequence[Target], skills: SkillRegistry, args: argparse.Namespace, policy: Policy | None, limit: int = 30) -> list[dict]:
     selected = set(filter(None, str(getattr(args, "tools", "") or "").split(","))) or None
     profile = getattr(args, "profile", "standard")
+    query = " ".join(t.raw for t in targets)
     out: list[dict] = []
     seen: set[str] = set()
     for target in targets:
-        for skill in skills.all():
-            tool = skill.tool
-            if not tool or skill.name in seen:
+        for skill in skills.candidates(target, profile, selected, policy, limit, query, executable_only=True):
+            if skill.name in seen:
                 continue
-            if not skill.enabled:
-                continue
-            if selected and skill.name not in selected and tool.name not in selected:
-                continue
-            if policy and policy.allow_tools and tool.name not in policy.allow_tools:
-                continue
-            if profile == "quick" and tool.phase not in {"recon", "fingerprint"}:
-                continue
-            if profile != "deep" and tool.phase == "bruteforce":
-                continue
-            if tool.needs_url and not target.is_url:
-                continue
-            if not skills.is_available(tool):
-                continue
-            intrusive = tool.intrusive or bool(policy and tool.name in policy.intrusive_tools)
-            out.append({
-                "name": skill.name,
-                "phase": skill.phase,
-                "risk": "intrusive" if intrusive else "safe",
-                "needs_url": tool.needs_url,
-                "description": skill.description[:300],
-            })
+            out.append(skill_candidate_payload(skill))
             seen.add(skill.name)
             if len(out) >= limit:
                 return out
@@ -1762,6 +1966,8 @@ def build_manifest(run_id: str, started_at: str, status: str, workspace: Path, t
             "execution_mode": getattr(args, "execution_mode", "local"),
             "queue_backend": getattr(args, "queue_backend", "sqlite"),
             "queue_name": getattr(args, "queue_name", ""),
+            "skills_dir": getattr(args, "skills_dir", "") or "",
+            "skillset_sha256": getattr(args, "skillset_sha256", "") or "",
             "headers": [str(h).split(":", 1)[0].strip() for h in (getattr(args, "headers", []) or [])],
             "cookie": bool(getattr(args, "cookie", "")),
             "model": args.model,
@@ -1835,7 +2041,31 @@ def cmd_tools(args: argparse.Namespace) -> int:
 
 
 def cmd_skills(args: argparse.Namespace) -> int:
-    registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None)
+    if args.skill_cmd == "normalize":
+        data = json.loads(Path(args.path).read_text(encoding="utf-8"))
+        print(json.dumps(normalize_skill_manifest(data, source=args.path), indent=2, ensure_ascii=False))
+        return 0
+    if args.skill_cmd == "validate":
+        rows = []
+        ok = True
+        seen: dict[str, str] = {}
+        tools = ToolRegistry()
+        for path in sorted(Path(args.path).rglob("*.json") if Path(args.path).is_dir() else [Path(args.path)]):
+            try:
+                manifest = normalize_skill_manifest(json.loads(path.read_text(encoding="utf-8")), source=str(path))
+                duplicate = seen.get(manifest["name"])
+                if duplicate:
+                    raise ValueError(f"duplicate skill name {manifest['name']} also in {duplicate}")
+                if manifest.get("tool") and not tools.get(manifest["tool"]):
+                    raise ValueError(f"unknown tool for {manifest['name']}: {manifest['tool']}")
+                seen[manifest["name"]] = str(path)
+                rows.append({"path": str(path), "ok": True, "manifest": manifest})
+            except Exception as exc:
+                ok = False
+                rows.append({"path": str(path), "ok": False, "error": str(exc)})
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return 0 if ok else 1
+    registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
     if args.skill_cmd == "list":
         rows = []
         for skill in registry.all():
@@ -1847,7 +2077,13 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 "enabled": skill.enabled,
                 "requires_approval": skill.requires_approval,
                 "tool": skill.tool.name if skill.tool else "",
-                "available": registry.tool_registry.is_available(skill.tool) if skill.tool else True,
+                "available": registry.is_available(skill.tool) if skill.tool else True,
+                "source": skill.source,
+                "tags": list(skill.tags),
+                "capabilities": list(skill.capabilities),
+                "priority": skill.priority,
+                "needs_url": skill.needs_url,
+                "conflicts": list(skill.conflicts),
                 "description": skill.description,
             })
         print(json.dumps(rows, indent=2, ensure_ascii=False))
@@ -2037,6 +2273,8 @@ def cmd_worker(args: argparse.Namespace) -> int:
         execution_mode="local",
         queue_backend=args.queue_backend or effective.get("queue_backend", "sqlite"),
         queue_name=args.queue_name or effective.get("queue_name", "") or _queue_name(workspace, manifest.get("run_id", "")),
+        skills_dir=effective.get("skills_dir", ""),
+        skillset_sha256=effective.get("skillset_sha256", ""),
         base_url=effective.get("base_url"),
         model=effective.get("model", os.getenv("OPENAI_MODEL", "gpt-4o-mini")),
         api_key_env=effective.get("api_key_env", "OPENAI_API_KEY"),
@@ -2081,7 +2319,7 @@ def cmd_worker(args: argparse.Namespace) -> int:
             processed += 1
             continue
         target = normalize_target(row["target"])
-        status, digest = execute_tool_job(store, registry, scope, raw_dir, ns, tool, target, row["reason"], json.loads(row["command"]))
+        status, digest = execute_tool_job(store, registry, scope, raw_dir, ns, tool, target, row["reason"], json.loads(row["command"]), skill_name=row.get("skill") or tool.name)
         store.finish_job(row["id"], "done" if status in {"done", "cached"} else status, digest, status, worker_id=worker_id)
         store.add_event("job_finished", {"job_id": row["id"], "tool": tool.name, "target": target.raw, "status": status})
         processed += 1
@@ -2197,6 +2435,8 @@ def cmd_resume(args: argparse.Namespace) -> int:
         execution_mode=effective.get("execution_mode", "local"),
         queue_backend=effective.get("queue_backend", "sqlite"),
         queue_name=effective.get("queue_name", ""),
+        skills_dir=effective.get("skills_dir", ""),
+        skillset_sha256=effective.get("skillset_sha256", ""),
         headers=[],
         cookie="",
         base_url=effective.get("base_url"),
@@ -2350,6 +2590,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-workers", type=int, default=4)
     run.add_argument("--timeout", type=float, default=120.0, help="per tool timeout seconds")
     run.add_argument("--tools", help="comma-separated tool allowlist, e.g. nmap,nuclei")
+    run.add_argument("--skills-dir", default=os.getenv("AUTOATTACK_SKILLS_DIR", ""), help="directory of JSON skill manifests")
     run.add_argument("--execution-mode", choices=["local", "queue"], default="local", help="local executes immediately; queue plans jobs for distributed workers")
     run.add_argument("--distributed", action="store_true", help="alias for --execution-mode queue")
     run.add_argument("--queue-backend", choices=["sqlite", "redis"], default="sqlite", help="distributed queue backend")
@@ -2373,14 +2614,21 @@ def build_parser() -> argparse.ArgumentParser:
     tools.add_argument("--policy", help="policy JSON path")
     tools.set_defaults(func=cmd_tools)
 
-    skills = sub.add_parser("skills", help="list/test/enable/disable local skills")
+    skills = sub.add_parser("skills", help="list/test/enable/disable/normalize/validate local skills")
     skills.add_argument("--config", default="", help=argparse.SUPPRESS)
+    skills.add_argument("--skills-dir", default=os.getenv("AUTOATTACK_SKILLS_DIR", ""), help="directory of JSON skill manifests")
     skill_sub = skills.add_subparsers(dest="skill_cmd", required=True)
     skills_list = skill_sub.add_parser("list", help="list local skills")
     skills_list.set_defaults(func=cmd_skills)
     skills_test = skill_sub.add_parser("test", help="test a local skill manifest/build/parser")
     skills_test.add_argument("name")
     skills_test.set_defaults(func=cmd_skills)
+    skills_norm = skill_sub.add_parser("normalize", help="normalize a JSON skill manifest")
+    skills_norm.add_argument("path")
+    skills_norm.set_defaults(func=cmd_skills)
+    skills_validate = skill_sub.add_parser("validate", help="validate a JSON skill manifest or directory")
+    skills_validate.add_argument("path")
+    skills_validate.set_defaults(func=cmd_skills)
     for name in ("enable", "disable"):
         p = skill_sub.add_parser(name, help=f"{name} a local skill")
         p.add_argument("name")

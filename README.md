@@ -15,7 +15,8 @@
 |---|---|
 | Scope/policy/deny/CIDR/subdomain guard | 已实现 |
 | Planner → skills/router → executor/worker → analyst → reporter | 已实现 |
-| 本地 skills `list/test/enable/disable` | 已实现 |
+| 本地 skills `list/test/enable/disable/normalize/validate` | 已实现 |
+| JSON skill manifest 目录加载、元数据路由、冲突控制 | 已实现 |
 | Intrusive 双 gate + approval queue | 已实现 |
 | AI planner JSON gate，读取 blackboard observations/findings，不执行 LLM shell | 已实现 |
 | SQLite blackboard：runs/tasks/observations/findings/events/artifacts | 已实现 |
@@ -145,6 +146,38 @@ python3 autoattack_agent.py skills list
 python3 autoattack_agent.py skills test python-recon
 python3 autoattack_agent.py skills disable nuclei
 python3 autoattack_agent.py skills enable nuclei
+python3 autoattack_agent.py skills --skills-dir skills validate skills
+python3 autoattack_agent.py skills normalize skills/web_headers.json
+```
+
+外部 skill 用 JSON manifest 维护；可放到任意目录，运行时通过 `--skills-dir` 或 `AUTOATTACK_SKILLS_DIR` 加载：
+
+```json
+{
+  "name": "web.headers",
+  "version": "1",
+  "description": "Check HTTP response headers",
+  "phase": "fingerprint",
+  "risk": "safe",
+  "tool": "httpx",
+  "tags": ["web", "headers"],
+  "capabilities": ["http", "headers"],
+  "priority": 80,
+  "needs_url": true,
+  "conflicts": []
+}
+```
+
+Manifest 字段会被规范化和校验：`name/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/conflicts`。`tool` 绑定已有外部工具时可执行；没有 `tool` 的 manifest 只进入 catalog，不会进入执行计划。Router 会按 profile、policy、目标类型、工具可用性、priority、query term 和 conflicts 选择候选；AI planner 只收到 Top-K 可执行候选。
+
+运行时加载：
+
+```bash
+python3 autoattack_agent.py run https://example.com \
+  --policy policy.json \
+  --workspace runs/skills \
+  --skills-dir skills \
+  --profile deep
 ```
 
 侵入式工具需要 policy `approval.intrusive=true` 且 CLI `--approve-intrusive`；未预授权的 intrusive skill 会进入 approval queue：

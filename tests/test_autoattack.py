@@ -116,6 +116,7 @@ class AutoAttackTests(unittest.TestCase):
             manifest = json.loads((workspace / "run.json").read_text())
             self.assertEqual(manifest["status"], "completed")
             self.assertIn("policy_sha256", manifest)
+            self.assertEqual(len(manifest["effective_args"].get("skillset_sha256", "")), 64)
             self.assertEqual(aa.main(["status", str(workspace)]), 0)
             self.assertEqual(aa.main(["report", str(workspace), "--format", "md,json,sarif"]), 0)
             self.assertEqual(aa.main(["resume", str(workspace), "--retry-failed", "1"]), 0)
@@ -423,6 +424,65 @@ class AutoAttackTests(unittest.TestCase):
             self.assertIn("findings", aa.api_payload(tmp, "status"))
             args = argparse.Namespace(headers=["Authorization: Bearer x"], cookie="sid=1")
             self.assertEqual(aa._http_headers_from_args(args)["Cookie"], "sid=1")
+
+
+    def test_skill_manifest_normalize_validate_and_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skills_dir = root / "skills"
+            skills_dir.mkdir()
+            manifest = skills_dir / "web_headers.json"
+            manifest.write_text(json.dumps({
+                "name": "web.headers",
+                "version": "1.2",
+                "description": "Check HTTP response headers",
+                "phase": "fingerprint",
+                "risk": "safe",
+                "tags": "web,headers",
+                "capabilities": ["http", "headers", "http"],
+                "priority": 88,
+                "needs_url": "true",
+            }))
+            normalized = aa.normalize_skill_manifest(json.loads(manifest.read_text()), source=str(manifest))
+            self.assertEqual(normalized["tags"], ["web", "headers"])
+            self.assertEqual(normalized["capabilities"], ["http", "headers"])
+            self.assertTrue(normalized["needs_url"])
+            rc, rows = self._capture_json(["skills", "--skills-dir", str(skills_dir), "validate", str(skills_dir)])
+            self.assertEqual(rc, 0)
+            self.assertTrue(rows[0]["ok"])
+            rc, rows = self._capture_json(["skills", "--skills-dir", str(skills_dir), "list"])
+            self.assertEqual(rc, 0)
+            by_name = {x["name"]: x for x in rows}
+            self.assertIn("web.headers", by_name)
+            self.assertEqual(by_name["web.headers"]["source"], str(manifest))
+            self.assertEqual(by_name["web.headers"]["priority"], 88)
+
+    def test_manifest_skill_tool_binding_conflict_priority_routing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skills_dir = root / "skills"
+            skills_dir.mkdir()
+            for item in [
+                {"name": "dummy.high", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan", "priority": 90, "capabilities": ["web"], "conflicts": ["dummy.low"]},
+                {"name": "dummy.low", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan low", "priority": 10, "capabilities": ["web"]},
+                {"name": "catalog.only", "phase": "scan", "risk": "safe", "description": "metadata only", "priority": 100},
+            ]:
+                (skills_dir / f"{item['name']}.json").write_text(json.dumps(item))
+            tool = aa.ToolSpec("dummy", "scan", "dummy tool", False, False, sys.executable, lambda _t, _o: [sys.executable, "-V"], lambda _r: ([], []))
+            reg = aa.ToolRegistry()
+            reg.tools = [tool]
+            skills = aa.SkillRegistry(reg, Path(tmp) / "disabled.json", skills_dir)
+            self.assertIs(skills.get("dummy.high").tool, tool)
+            self.assertIn("catalog.only", {s.name for s in skills.candidates(aa.normalize_target("example.com"), "deep")})
+            router = aa.SkillRouter(skills)
+            plans = router.plan(aa.normalize_target("example.com"), "deep", False, query="web scan")
+            plan_names = [p.skill.name for p in plans]
+            self.assertEqual(plan_names[0], "dummy.high")
+            self.assertNotIn("dummy.low", plan_names)
+            self.assertNotIn("catalog.only", plan_names)
+            args = argparse.Namespace(tools="", profile="deep")
+            candidates = aa.ai_skill_candidates([aa.normalize_target("example.com")], skills, args, None, limit=10)
+            self.assertNotIn("catalog.only", {c["name"] for c in candidates})
 
     def test_no_policy_requires_smoke(self):
         with self.assertRaises(SystemExit):
