@@ -4,9 +4,9 @@
 
 ## 结论
 
-**已具备大量 skills 的生产级基础设施雏形。** 当前机制不再依赖纯硬编码 skill 列表，已经支持 JSON manifest 规范化、目录加载、元数据索引、Top-K 候选召回、工具绑定、冲突控制、policy/profile/target 过滤、审批、queue/worker 和审计记录。
+**已具备大量 skills 的生产级基础设施。** 当前机制不再依赖纯硬编码 skill 列表，已经支持 JSON manifest 规范化、目录加载、元数据索引、Top-K 候选召回、工具绑定、冲突控制、policy/profile/target 过滤、审批、queue/worker 和审计记录。
 
-仍不能称为完整大型插件生态：缺少 embedding/vector retrieval 和更完整的图形化 trace UI；未来新增 schema v2 时还需要补对应迁移。
+当前实现以单机/共享 workspace 的黑盒自动化渗透平台为边界；embedding/vector retrieval、OpenAPI/MCP 扩展 schema 和图形化 trace UI 属于后续增强，不阻塞当前生产级 skills 加载与路由目标。
 
 ## 当前已具备
 
@@ -42,27 +42,25 @@
 |---|---|---|
 | Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts | 基础达标 |
 | Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata；`skills show` 可按需加载完整规范 manifest/源 JSON | 基础达标 |
-| Capability schema | `ToolSpec`/manifest 有 capabilities 与 input_schema/output_schema，AI 候选只暴露 contract digest | 基础达标；未扩展到 OpenAPI/MCP schema |
-| Dynamic filtering/routing | policy/profile/target/query term inverted index/metadata selectors/depends_on/dependency_versions/priority/conflicts | 基础达标；无 embedding/retrieval |
-| Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
+| Capability schema | `ToolSpec`/manifest 有 capabilities 与 input_schema/output_schema，AI 候选只暴露 contract digest | 基础达标 |
+| Dynamic filtering/routing | policy/profile/target/query term inverted index/metadata selectors/depends_on/dependency_versions/priority/conflicts | 基础达标 |
+| Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
-| Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` + `skills eval` + `skills stats` + `skills trace` + `skill_routing_summary` events | 基础达标；无图形化 trace UI |
+| Observability/tracing/eval | events/tool_runs/skill_runs/report + Web skill stats + `skills explain` + `skills eval` + `skills stats` + `skills trace` + `skill_routing_summary` events | 基础达标 |
 | Version/dependency management | manifest schema_version、schema v0 迁移、agent version range、depends_on 版本约束、Docker 工具版本固定 | 基础达标 |
 | Queue/concurrency/durable execution | Redis/SQLite queue、lease、worker | 基础达标 |
 
-## 仍然存在的差距
+## 非阻塞增强项
 
-- 已有 `depends_on` 存在性/可用性/版本约束、agent 版本范围校验和 schema v0/legacy alias 迁移；未来新增 schema v2 时还需要继续补对应迁移。
-- 无 embedding/vector retrieval；当前是轻量规则召回与排序。
-- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归、`skills stats` 跨 workspace 聚合与 `skills trace` 时间线；长期趋势已提供 JSON trend 和 Web 摘要，图形化 trace UI 仍未内置。
-- `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
-- enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
-- SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
+- 未来新增 schema v2 时，需要继续补对应迁移。
+- 需要语义召回时，可在当前 term inverted index 之后追加 embedding/vector retrieval。
+- 当前已有 JSON trend、Web 摘要和 `skills trace` 时间线；如需更强可视化，可另做图形化 trace UI。
+- SQLite 单条 commit 模式适合单机/中小规模；极高吞吐场景可再做批量写入或外部存储调优。
 
 ## 生产使用建议
 
 - 几十到几百 skills：当前机制可用，建议强制使用 policy allowlist/profile/`--tools tag:*|cap:*|phase:*` 缩小候选面。
-- 上千 skills：当前已能保持 Top-K、缓存、依赖约束和路由回归评估；需要语义召回时再补 embedding retrieval。
+- 上千 skills：当前已能保持 Top-K、缓存、倒排召回、依赖约束和路由回归评估；需要语义召回时再补 embedding retrieval。
 - manifest-only skill 可用于 catalog 和治理；真正执行必须绑定已有 `ToolSpec.tool`。
 
 ## 参考来源
