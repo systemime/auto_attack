@@ -1432,6 +1432,7 @@ class SkillRegistry:
         by_phase: dict[str, list[SkillSpec]] = {}
         by_risk: dict[str, list[SkillSpec]] = {}
         by_source: dict[str, list[SkillSpec]] = {}
+        by_term: dict[str, list[SkillSpec]] = {}
         term_df: Counter[str] = Counter()
         for skill in skills:
             if skill.name in by_name:
@@ -1447,10 +1448,13 @@ class SkillRegistry:
             by_risk.setdefault(skill.risk, []).append(skill)
             source = "manifest" if skill.source not in {"builtin", "tool"} else skill.source
             by_source.setdefault(source, []).append(skill)
-            term_df.update(_skill_terms(skill))
+            terms = _skill_terms(skill)
+            term_df.update(terms)
+            for term in terms:
+                by_term.setdefault(term, []).append(skill)
         if duplicates:
             raise ValueError("duplicate skill names: " + ", ".join(sorted(set(duplicates))))
-        for bucket in (by_tool, by_tag, by_capability, by_phase, by_risk, by_source):
+        for bucket in (by_tool, by_tag, by_capability, by_phase, by_risk, by_source, by_term):
             for values in bucket.values():
                 values.sort(key=lambda x: (-x.priority, x.name))
         self._skills = sorted(skills, key=lambda x: (-x.priority, x.name))
@@ -1461,6 +1465,7 @@ class SkillRegistry:
         self._by_phase = by_phase
         self._by_risk = by_risk
         self._by_source = by_source
+        self._by_term = by_term
         self._term_weight = {term: max(1, min(50, len(skills) // count)) for term, count in term_df.items() if count}
         self._skillset_digest = _json_sha256({"skills": [skill_to_manifest(s) for s in self._skills]})
 
@@ -1520,6 +1525,10 @@ class SkillRegistry:
             pool = [s for phase, values in self._by_phase.items() if phase != "bruteforce" for s in values]
         else:
             pool = self._skills
+        if query_terms:
+            query_hits = {skill.name for term in query_terms for skill in self._by_term.get(term, ())}
+            if query_hits:
+                pool = [skill for skill in pool if skill.name in query_hits]
         for skill in pool:
             if executable_only and not skill.tool:
                 continue

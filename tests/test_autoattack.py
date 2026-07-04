@@ -314,6 +314,7 @@ class AutoAttackTests(unittest.TestCase):
                 rare = skills.get("skill999")
                 common = skills.get("skill0")
                 self.assertGreater(skills.match_score(rare, {"skill999"}), skills.match_score(common, {"skill999"}))
+                self.assertEqual([s.name for s in skills.candidates(target, "deep", query="skill999")], ["skill999"])
                 idx = {r["name"] for r in aa.Store(Path(tmp) / "state.sqlite3").db.execute("select name from sqlite_master where type='index'")}
                 self.assertIn("idx_approval_skill_target_id", idx)
                 self.assertIn("idx_skill_runs_skill_status", idx)
