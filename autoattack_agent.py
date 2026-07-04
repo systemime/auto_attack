@@ -827,9 +827,40 @@ def _check_skill_compat(data: dict, name: str) -> tuple[int, str, str]:
     return schema_version, min_agent, max_agent
 
 
+def migrate_skill_manifest(data: dict) -> dict:
+    migrated = dict(data)
+    for old, new in {
+        "id": "name",
+        "summary": "description",
+        "stage": "phase",
+        "tool_name": "tool",
+        "tag": "tags",
+        "capability": "capabilities",
+        "requires_url": "needs_url",
+        "incompatible_with": "conflicts",
+    }.items():
+        if new not in migrated and old in migrated:
+            migrated[new] = migrated[old]
+    if "tool" not in migrated and "tools" in migrated:
+        tools = _list_names(migrated["tools"])
+        if len(tools) > 1:
+            raise ValueError("legacy tools must map to a single tool")
+        if tools:
+            migrated["tool"] = tools[0]
+    legacy_intrusive = _bool(migrated.get("intrusive"), False) or _bool(migrated.get("dangerous"), False)
+    if "risk" not in migrated and ("intrusive" in migrated or "dangerous" in migrated):
+        migrated["risk"] = "intrusive" if legacy_intrusive else "safe"
+    if "requires_approval" not in migrated and ("intrusive" in migrated or "dangerous" in migrated):
+        migrated["requires_approval"] = legacy_intrusive
+    if int(migrated.get("schema_version", SKILL_SCHEMA_VERSION)) == 0:
+        migrated["schema_version"] = SKILL_SCHEMA_VERSION
+    return migrated
+
+
 def normalize_skill_manifest(data: dict, source: str = "") -> dict:
     if not isinstance(data, dict):
         raise ValueError("skill manifest must be a JSON object")
+    data = migrate_skill_manifest(data)
     name = str(data.get("name", "")).strip()
     if not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", name):
         raise ValueError(f"invalid skill name in {source or '<memory>'}")

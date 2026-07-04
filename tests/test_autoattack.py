@@ -481,6 +481,13 @@ class AutoAttackTests(unittest.TestCase):
             auto = aa.normalize_skill_manifest({"name": "web.auto-headers", "description": "auto terms", "phase": "fingerprint", "tool": "httpx"})
             self.assertIn("web", auto["tags"])
             self.assertIn("httpx", auto["capabilities"])
+            legacy = aa.normalize_skill_manifest({"id": "legacy.headers", "summary": "legacy headers", "stage": "fingerprint", "tool_name": "httpx", "schema_version": 0, "requires_url": "yes", "capability": "headers"})
+            self.assertEqual(legacy["schema_version"], 1)
+            self.assertEqual(legacy["name"], "legacy.headers")
+            self.assertEqual(legacy["phase"], "fingerprint")
+            self.assertEqual(legacy["tool"], "httpx")
+            self.assertTrue(legacy["needs_url"])
+            self.assertEqual(legacy["capabilities"], ["headers"])
             raw_manifest = skills_dir / "auto.json"
             raw_manifest.write_text(json.dumps({"name": "web.auto", "description": "auto", "tool": "httpx"}))
             rc, normalized_one = self._capture_json(["skills", "normalize", str(raw_manifest)])

@@ -13,7 +13,7 @@
 | 维度 | 当前状态 |
 |---|---|
 | Registry | `python-recon` + `ToolRegistry.tools` + JSON manifest skills，by-name 缓存和 duplicate 检测。 |
-| Manifest | `skills normalize/validate`，支持单文件/目录批量规范化、原子回写与 strict CI 门禁；字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/dependency_versions/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
+| Manifest | `skills normalize/validate`，支持单文件/目录批量规范化、legacy alias/schema v0 迁移、原子回写与 strict CI 门禁；字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/dependency_versions/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
 | Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态原子写入 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/depends_on/dependency_versions/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
@@ -28,7 +28,7 @@
 ## 大量 skills 当前处理方式
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
-2. **规范化**：manifest 支持单文件/目录批量 normalize、`--write` 原子回写和 `validate --strict` CI 门禁，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on/dependency_versions、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
+2. **规范化**：manifest 支持单文件/目录批量 normalize、legacy alias/schema v0 迁移、`--write` 原子回写和 `validate --strict` CI 门禁，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on/dependency_versions、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
 3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
@@ -47,12 +47,12 @@
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
 | Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` + `skills eval` + `skills stats` + `skill_routing_summary` events | 部分达标；无 trace UI |
-| Version/dependency management | manifest schema_version、agent version range、depends_on 版本约束、Docker 工具版本固定 | 部分达标；无 schema migration |
+| Version/dependency management | manifest schema_version、schema v0 迁移、agent version range、depends_on 版本约束、Docker 工具版本固定 | 基础达标 |
 | Queue/concurrency/durable execution | Redis/SQLite queue、lease、worker | 基础达标 |
 
 ## 仍然存在的差距
 
-- 已有 `depends_on` 存在性/可用性/版本约束和 agent 版本范围校验；仍缺 schema migration。
+- 已有 `depends_on` 存在性/可用性/版本约束、agent 版本范围校验和 schema v0/legacy alias 迁移；未来新增 schema v2 时还需要继续补对应迁移。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
 - router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归与 `skills stats` workspace 聚合；跨 run 的长期趋势仍不完整。
 - `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
