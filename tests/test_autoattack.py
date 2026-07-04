@@ -126,6 +126,12 @@ class AutoAttackTests(unittest.TestCase):
             routing_events = [json.loads(r["data"]) for r in aa.Store(workspace / "state.sqlite3").rows("events") if r["kind"] == "skill_routing_summary"]
             self.assertTrue(routing_events)
             self.assertIn("skipped_reason_counts", routing_events[0])
+            stats = aa.skill_stats(aa.Store(workspace / "state.sqlite3"))
+            self.assertGreaterEqual(stats["skill_runs"]["total"], 1)
+            self.assertGreaterEqual(stats["routing"]["events"], 1)
+            rc, stats_cli = self._capture_json(["skills", "stats", str(workspace), "--limit", "5"])
+            self.assertEqual(rc, 0)
+            self.assertIn("routing", stats_cli)
             self.assertEqual(aa.main(["status", str(workspace)]), 0)
             self.assertEqual(aa.main(["report", str(workspace), "--format", "md,json,sarif"]), 0)
             self.assertEqual(aa.main(["resume", str(workspace), "--retry-failed", "1"]), 0)

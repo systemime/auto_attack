@@ -1064,6 +1064,47 @@ def eval_skill_routing(skills: SkillRegistry, path: Path, policy: Policy | None 
     }
 
 
+def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
+    with store.lock:
+        skill_rows = store.db.execute("select skill,status,count(*) c from skill_runs group by skill,status").fetchall()
+        routing_rows = store.db.execute("select data from events where kind='skill_routing_summary' order by id desc limit ?", (max(0, int(max_events or 0)) or 1000,)).fetchall()
+    by_skill: dict[str, dict] = {}
+    status_totals: dict[str, int] = {}
+    for row in skill_rows:
+        skill = row["skill"] or ""
+        status = row["status"] or ""
+        count = int(row["c"])
+        item = by_skill.setdefault(skill, {"skill": skill, "total": 0, "status": {}})
+        item["total"] += count
+        item["status"][status] = count
+        status_totals[status] = status_totals.get(status, 0) + count
+    plan_status: dict[str, int] = {}
+    skipped_reason_counts: dict[str, int] = {}
+    routed_targets = planned = candidates = 0
+    for row in routing_rows:
+        with contextlib.suppress(Exception):
+            data = json.loads(row["data"])
+            routed_targets += 1
+            planned += int(data.get("planned", 0) or 0)
+            candidates += int(data.get("candidates", 0) or 0)
+            for key, value in data.get("plan_status", {}).items():
+                plan_status[str(key)] = plan_status.get(str(key), 0) + int(value)
+            for key, value in data.get("skipped_reason_counts", {}).items():
+                skipped_reason_counts[str(key)] = skipped_reason_counts.get(str(key), 0) + int(value)
+    top = sorted(by_skill.values(), key=lambda x: (-int(x["total"]), x["skill"]))
+    limit = max(0, int(limit or 0))
+    return {
+        "skill_runs": {"total": sum(status_totals.values()), "by_status": dict(sorted(status_totals.items())), "top_skills": top[:limit] if limit else top},
+        "routing": {
+            "events": routed_targets,
+            "candidates": candidates,
+            "planned": planned,
+            "plan_status": dict(sorted(plan_status.items())),
+            "skipped_reason_counts": dict(sorted(skipped_reason_counts.items())),
+        },
+    }
+
+
 def _dependency_cycle(graph: dict[str, Sequence[str]]) -> list[str]:
     visiting: list[str] = []
     visited: set[str] = set()
@@ -2466,6 +2507,10 @@ def cmd_skills(args: argparse.Namespace) -> int:
                     row["error"] = "dependency cycle: " + " -> ".join(cycle)
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0 if ok else 1
+    if args.skill_cmd == "stats":
+        store = Store(Path(args.workspace).resolve() / "state.sqlite3")
+        print(json.dumps(skill_stats(store, args.limit, args.max_events), indent=2, ensure_ascii=False))
+        return 0
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
     if args.skill_cmd == "list":
         rows, total = filter_skill_rows(registry, args)
@@ -3071,6 +3116,11 @@ def build_parser() -> argparse.ArgumentParser:
     skills_eval.add_argument("--policy", default="", help="policy JSON path")
     skills_eval.add_argument("--fail-under", type=float, default=100.0)
     skills_eval.set_defaults(func=cmd_skills)
+    skills_stats = skill_sub.add_parser("stats", help="summarize skill routing and run outcomes from a workspace")
+    skills_stats.add_argument("workspace")
+    skills_stats.add_argument("--limit", type=int, default=20)
+    skills_stats.add_argument("--max-events", type=int, default=1000)
+    skills_stats.set_defaults(func=cmd_skills)
     for name in ("enable", "disable"):
         p = skill_sub.add_parser(name, help=f"{name} a local skill")
         p.add_argument("name")
