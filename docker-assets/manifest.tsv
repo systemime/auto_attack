@@ -1,0 +1,5 @@
+httpx	v1.6.10	https://github.com/projectdiscovery/httpx/releases/download/v1.6.10/httpx_1.6.10_linux_amd64.zip	e7eb8473530c2d0eb4eb132c7253c0138745d622970f36413c1f349ddd60edb7
+katana	v1.1.2	https://github.com/projectdiscovery/katana/releases/download/v1.1.2/katana_1.1.2_linux_amd64.zip	710205030c3d07a23d86fe11dac595a3c681ab5fa8daad679c752cbfd4ee0425
+naabu	v2.3.2	https://github.com/projectdiscovery/naabu/releases/download/v2.3.2/naabu_2.3.2_linux_amd64.zip	1560c77015eb9e55096a5742a703e56c72d4d5a5e041981bc12eccf2c5afd8f2
+nuclei	v3.3.8	https://github.com/projectdiscovery/nuclei/releases/download/v3.3.8/nuclei_3.3.8_linux_amd64.zip	1526650021ada87e9cfc2a30048c8e59f5db9eed079c7807d53b7e181009bfe4
+subfinder	v2.6.6	https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip	6fda32fe1f5750e63fa07c112b1b615d033e425c6dc6659ed8ec61035eb8eba2

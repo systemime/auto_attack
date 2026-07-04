@@ -1,0 +1,35 @@
+LuaN1aoAgent	ok	13s	 GitNexus Analyzer Repository indexed successfully (10.6s) 2,455 nodes | 4,258 edges | 71 clusters | 177 flows /opt/project/auto_attack/repos/LuaN1aoAgent
+Nettacker	ok	8s	 GitNexus Analyzer
+ Skipped 1 large files (>512KB, likely generated/vendored)
+ - nettacker/modules/scan/web_technologies.yaml
+ Set GITNEXUS_MAX_FILE_SIZE=<KB> to include files above the default cap. Repository indexed successfully (7.4s) 1,362 nodes | 3,295 edges | 62 clusters | 91 flows /opt/project/auto_attack/repos/Nettacker
+Pentest-Swarm-AI	ok	20s	 GitNexus Analyzer Repository indexed successfully (18.6s) 4,811 nodes | 13,370 edges | 255 clusters | 300 flows /opt/project/auto_attack/repos/Pentest-Swarm-AI
+PentestGPT	already-indexed
+agentic_security	ok	43s	 GitNexus Analyzer Repository indexed successfully (41.7s) 4,917 nodes | 11,614 edges | 183 clusters | 300 flows /opt/project/auto_attack/repos/agentic_security
+airecon	ok	33s	 GitNexus Analyzer Repository indexed successfully (31.6s) 13,618 nodes | 23,892 edges | 431 clusters | 300 flows /opt/project/auto_attack/repos/airecon
+amass	ok	17s	 GitNexus Analyzer Repository indexed successfully (14.5s) 3,457 nodes | 13,295 edges | 149 clusters | 257 flows /opt/project/auto_attack/repos/amass
+caldera	ok	19s	 GitNexus Analyzer Repository indexed successfully (18.6s) 4,435 nodes | 10,198 edges | 239 clusters | 255 flows /opt/project/auto_attack/repos/caldera
+nuclei	ok	50s	 GitNexus Analyzer Repository indexed successfully (47.9s) 11,296 nodes | 40,050 edges | 487 clusters | 300 flows /opt/project/auto_attack/repos/nuclei
+nuclei-templates	ok	20s	 GitNexus Analyzer
+ Skipped 7 large files (>512KB, likely generated/vendored)
+ - TEMPLATES-STATS.md
+ - cves.json
+ - helpers/wordlists/params.txt
+ - helpers/wordlists/wordpress-plugins.txt
+ - http/technologies/wordpress/plugins/wordpress-plugin-detect.yaml
+ ...and 2 more (set GITNEXUS_VERBOSE=1 to list them all)
+ Set GITNEXUS_MAX_FILE_SIZE=<KB> to include files above the default cap. Repository indexed successfully (18.5s) 14,688 nodes | 14,667 edges | 0 clusters | 0 flows /opt/project/auto_attack/repos/nuclei-templates
+osmedeus	ok	154s	 GitNexus Analyzer
+ Skipped 2 large files (>512KB, likely generated/vendored)
+ - test/testdata/sample-jsonl-output/semgrep-results.sarif
+ - test/testdata/sample-jsonl-output/vigolium-juice-shop-output.jsonl
+ Set GITNEXUS_MAX_FILE_SIZE=<KB> to include files above the default cap. Repository indexed successfully (152.6s) 20,119 nodes | 68,990 edges | 949 clusters | 300 flows /opt/project/auto_attack/repos/osmedeus
+pentestagent	ok	14s	 GitNexus Analyzer Repository indexed successfully (10.9s) 2,839 nodes | 6,396 edges | 129 clusters | 224 flows /opt/project/auto_attack/repos/pentestagent
+shannon	ok	11s	 GitNexus Analyzer Repository indexed successfully (10.1s) 1,657 nodes | 4,307 edges | 64 clusters | 136 flows /opt/project/auto_attack/repos/shannon
+sqlmap	ok	44s	 GitNexus Analyzer
+ Skipped 1 large files (>512KB, likely generated/vendored)
+ - data/txt/wordlist.tx_
+ Set GITNEXUS_MAX_FILE_SIZE=<KB> to include files above the default cap. Repository indexed successfully (42.2s) 10,759 nodes | 29,785 edges | 631 clusters | 283 flows /opt/project/auto_attack/repos/sqlmap
+strix	ok	11s	 GitNexus Analyzer Repository indexed successfully (9.9s) 2,983 nodes | 5,359 edges | 89 clusters | 236 flows /opt/project/auto_attack/repos/strix
+subfinder	ok	11s	 GitNexus Analyzer Repository indexed successfully (10.0s) 1,943 nodes | 4,862 edges | 142 clusters | 168 flows /opt/project/auto_attack/repos/subfinder
+watchtower	ok	5s	 GitNexus Analyzer Repository indexed successfully (3.7s) 180 nodes | 296 edges | 4 clusters | 4 flows /opt/project/auto_attack/repos/watchtower
