@@ -17,7 +17,7 @@
 | Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态原子写入 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
-| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term、conflicts 过滤和排序。 |
+| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term weight、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选摘要和 contract digest。 |
 | Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats`、`skills trace` 覆盖候选、计划、跳过原因、回归门禁、执行耗时、跨 workspace 聚合统计和单目标/skill 时间线；真实 run 写入 `skill_routing_summary` 事件。 |
@@ -29,9 +29,9 @@
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
 2. **规范化**：manifest 支持单文件/目录批量 normalize、legacy alias/schema v0 迁移、`--write` 原子回写和 `validate --strict` CI 门禁，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、input_schema/output_schema、depends_on/dependency_versions、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
-3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
+3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase` 和 query term weight，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
-5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
+5. **排序**：按 priority + query term 权重分排序，AI planner 默认最多拿 30 个可执行候选。
 6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on/dependency_versions、intrusive approval 和 conflicts。
 7. **解释/评估**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，`skills eval` 做路由回归，`skills stats` 聚合单 workspace 或 runs 目录下的 skill_runs/routing events，`skills trace` 输出目标/skill 时间线。
 8. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
@@ -43,7 +43,7 @@
 | Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts | 基础达标 |
 | Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata；`skills show` 可按需加载完整规范 manifest/源 JSON | 基础达标 |
 | Capability schema | `ToolSpec`/manifest 有 capabilities 与 input_schema/output_schema，AI 候选只暴露 contract digest | 基础达标；未扩展到 OpenAPI/MCP schema |
-| Dynamic filtering/routing | policy/profile/target/query/metadata selectors/depends_on/dependency_versions/priority/conflicts | 基础达标；无 embedding/retrieval |
+| Dynamic filtering/routing | policy/profile/target/query term weighting/metadata selectors/depends_on/dependency_versions/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
 | Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` + `skills eval` + `skills stats` + `skills trace` + `skill_routing_summary` events | 基础达标；无图形化 trace UI |

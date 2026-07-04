@@ -30,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
@@ -724,6 +725,10 @@ ALLOWED_SKILL_RISKS = {"safe", "intrusive"}
 
 def _terms(text: str) -> set[str]:
     return {x.lower() for x in re.findall(r"[a-zA-Z0-9_.:-]{2,}", text or "")}
+
+
+def _skill_terms(skill: SkillSpec) -> set[str]:
+    return _terms(" ".join((skill.name, skill.phase, skill.risk, skill.description, *skill.tags, *skill.capabilities)))
 
 
 def _list_str(value: object) -> list[str]:
@@ -1427,6 +1432,7 @@ class SkillRegistry:
         by_phase: dict[str, list[SkillSpec]] = {}
         by_risk: dict[str, list[SkillSpec]] = {}
         by_source: dict[str, list[SkillSpec]] = {}
+        term_df: Counter[str] = Counter()
         for skill in skills:
             if skill.name in by_name:
                 duplicates.append(skill.name)
@@ -1441,6 +1447,7 @@ class SkillRegistry:
             by_risk.setdefault(skill.risk, []).append(skill)
             source = "manifest" if skill.source not in {"builtin", "tool"} else skill.source
             by_source.setdefault(source, []).append(skill)
+            term_df.update(_skill_terms(skill))
         if duplicates:
             raise ValueError("duplicate skill names: " + ", ".join(sorted(set(duplicates))))
         for bucket in (by_tool, by_tag, by_capability, by_phase, by_risk, by_source):
@@ -1454,6 +1461,7 @@ class SkillRegistry:
         self._by_phase = by_phase
         self._by_risk = by_risk
         self._by_source = by_source
+        self._term_weight = {term: max(1, min(50, len(skills) // count)) for term, count in term_df.items() if count}
         self._skillset_digest = _json_sha256({"skills": [skill_to_manifest(s) for s in self._skills]})
 
     def _load_manifest_skills(self) -> list[SkillSpec]:
@@ -1528,8 +1536,8 @@ class SkillRegistry:
 
     def match_score(self, skill: SkillSpec, query_terms: set[str]) -> int:
         score = int(skill.priority)
-        text = " ".join((skill.name, skill.phase, skill.risk, skill.description, *skill.tags, *skill.capabilities)).lower()
-        score += sum(15 for term in query_terms if term and term in text)
+        terms = _skill_terms(skill)
+        score += sum(10 * self._term_weight.get(term, 1) for term in query_terms if term in terms)
         return score
 
     def skip_reason(self, skill: SkillSpec, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None) -> str:
