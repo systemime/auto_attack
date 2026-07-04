@@ -13,11 +13,11 @@
 | 维度 | 当前状态 |
 |---|---|
 | Registry | `python-recon` + `ToolRegistry.tools` + JSON manifest skills，by-name 缓存和 duplicate 检测。 |
-| Manifest | `skills normalize/validate`，字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts。 |
-| Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态持久化到 JSON。 |
+| Manifest | `skills normalize/validate`，字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
+| Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态原子写入 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/depends_on/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
-| Router | 按 enabled、selected、availability、policy、profile、target type、depends_on、priority、query term、conflicts 过滤和排序。 |
+| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on、priority、query term、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选 metadata。 |
 | Routing explainability | `skills list --summary` 与 `skills explain` 输出 candidates/plans/skipped/score/skillset_sha256，支持海量 skills 选择审计。 |
@@ -28,9 +28,9 @@
 ## 大量 skills 当前处理方式
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
-2. **规范化**：manifest 统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on、conflicts、needs_url 等字段。
+2. **规范化**：manifest 统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
 3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
-4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤。
+4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
 6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on、intrusive approval 和 conflicts。
 7. **解释**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，便于审计路由效果。
@@ -43,7 +43,7 @@
 | Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/depends_on/conflicts | 基础达标 |
 | Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata | 部分达标；无二级详情加载 |
 | Capability schema | `ToolSpec` 有 build/parse/needs_url，manifest 有 capabilities | 部分达标；无 JSON Schema/OpenAPI/MCP schema |
-| Dynamic filtering/routing | policy/profile/target/query/depends_on/priority/conflicts | 基础达标；无 embedding/retrieval |
+| Dynamic filtering/routing | policy/profile/target/query/metadata selectors/depends_on/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
 | Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` | 部分达标；无选择评估集/trace UI |
@@ -57,12 +57,12 @@
 - 无二级详情加载；候选只给 metadata。
 - router 对 skipped reason、latency、选择分数的长期统计仍不完整。
 - `skills list` 已有分页；`Store.rows()` 仍偏全表读取，长期运行的 events/findings/tasks 还需要分页 API。
-- enable/disable JSON 没有跨进程文件锁。
+- enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
 - SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
 
 ## 生产使用建议
 
-- 几十到几百 skills：当前机制可用，建议强制使用 policy allowlist/profile/`--tools` 缩小候选面。
+- 几十到几百 skills：当前机制可用，建议强制使用 policy allowlist/profile/`--tools tag:*|cap:*|phase:*` 缩小候选面。
 - 上千 skills：当前已能保持 Top-K 与缓存，但建议补 embedding retrieval、依赖约束、分页观测、选择评估集。
 - manifest-only skill 可用于 catalog 和治理；真正执行必须绑定已有 `ToolSpec.tool`。
 

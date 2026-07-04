@@ -185,6 +185,9 @@ class AutoAttackTests(unittest.TestCase):
                 self.assertFalse(aa.SkillRegistry(config_path=Path(os.environ["AUTOATTACK_SKILLS_CONFIG"])).get("python-recon").enabled)
                 self.assertEqual(self._capture_json(["skills", "enable", "python-recon"])[0], 0)
                 self.assertTrue(aa.SkillRegistry(config_path=Path(os.environ["AUTOATTACK_SKILLS_CONFIG"])).get("python-recon").enabled)
+                cfg = Path(os.environ["AUTOATTACK_SKILLS_CONFIG"])
+                self.assertEqual(json.loads(cfg.read_text())["disabled"], [])
+                self.assertFalse(list(cfg.parent.glob("*.tmp")))
             finally:
                 if old is None:
                     os.environ.pop("AUTOATTACK_SKILLS_CONFIG", None)
@@ -455,6 +458,9 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(normalized["tags"], ["web", "headers"])
             self.assertEqual(normalized["capabilities"], ["http", "headers"])
             self.assertTrue(normalized["needs_url"])
+            auto = aa.normalize_skill_manifest({"name": "web.auto-headers", "description": "auto terms", "phase": "fingerprint", "tool": "httpx"})
+            self.assertIn("web", auto["tags"])
+            self.assertIn("httpx", auto["capabilities"])
             rc, rows = self._capture_json(["skills", "--skills-dir", str(skills_dir), "validate", str(skills_dir)])
             self.assertEqual(rc, 0)
             self.assertTrue(rows[0]["ok"])
@@ -516,6 +522,8 @@ class AutoAttackTests(unittest.TestCase):
             self.assertNotIn("dummy.low", plan_names)
             self.assertNotIn("dummy.blocked", plan_names)
             self.assertNotIn("catalog.only", plan_names)
+            self.assertIn("dummy.high", [p.skill.name for p in router.plan(aa.normalize_target("example.com"), "deep", False, selected={"cap:web"})])
+            self.assertFalse(router.plan(aa.normalize_target("example.com"), "deep", False, selected={"tag:nope"}))
             args = argparse.Namespace(tools="", profile="deep")
             candidates = aa.ai_skill_candidates([aa.normalize_target("example.com")], skills, args, None, limit=10)
             self.assertNotIn("catalog.only", {c["name"] for c in candidates})
@@ -534,7 +542,7 @@ class AutoAttackTests(unittest.TestCase):
                     return True
             aa.ToolRegistry = FakeRegistry
             try:
-                rc, explained_cli = self._capture_json(["skills", "--skills-dir", str(skills_dir), "explain", "example.com", "--profile", "deep", "--query", "web scan"])
+                rc, explained_cli = self._capture_json(["skills", "--skills-dir", str(skills_dir), "explain", "example.com", "--profile", "deep", "--query", "web scan", "--tools", "cap:web"])
                 self.assertEqual(rc, 0)
                 self.assertEqual(explained_cli["plans"][0]["skill"], "dummy.high")
             finally:

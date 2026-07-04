@@ -752,6 +752,10 @@ def _bool(value: object, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _default_skill_terms(name: str, phase: str, tool: str = "") -> list[str]:
+    return _list_str([phase, tool, *re.split(r"[.:-]+", name)])
+
+
 def _version_tuple(value: str) -> tuple[int, ...]:
     return tuple(int(x) for x in re.findall(r"\d+", value or "0")[:3]) or (0,)
 
@@ -797,6 +801,7 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
     depends_on = _list_names(data.get("depends_on", data.get("dependencies", [])))
     if name in depends_on:
         raise ValueError(f"skill cannot depend on itself: {name}")
+    auto_terms = _default_skill_terms(name, phase, tool)
     return {
         "name": name,
         "schema_version": schema_version,
@@ -809,8 +814,8 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
         "description": description[:1000],
         "tool": tool,
         "enabled": _bool(data.get("enabled"), True),
-        "tags": _list_str(data.get("tags", [])),
-        "capabilities": _list_str(data.get("capabilities", [])),
+        "tags": _list_str(data.get("tags", [])) or auto_terms,
+        "capabilities": _list_str(data.get("capabilities", [])) or auto_terms,
         "priority": priority,
         "needs_url": _bool(data.get("needs_url"), False),
         "conflicts": conflicts,
@@ -856,6 +861,31 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
         "depends_on": list(skill.depends_on),
         "description": skill.description[:300],
     }
+
+
+def skill_selectors(value: str) -> set[str] | None:
+    selected = {x.strip() for x in str(value or "").split(",") if x.strip()}
+    return selected or None
+
+
+def skill_selected(skill: SkillSpec, selected: set[str] | None) -> bool:
+    if not selected:
+        return True
+    source = "manifest" if skill.source not in {"builtin", "tool"} else skill.source
+    for item in selected:
+        if item in {skill.name, skill.tool.name if skill.tool else ""}:
+            return True
+        if item.startswith("tag:") and item[4:] in skill.tags:
+            return True
+        if item.startswith(("cap:", "capability:")) and item.split(":", 1)[1] in skill.capabilities:
+            return True
+        if item.startswith("phase:") and item[6:] == skill.phase:
+            return True
+        if item.startswith("risk:") and item[5:] == skill.risk:
+            return True
+        if item.startswith("source:") and item[7:] == source:
+            return True
+    return False
 
 
 def skill_list_row(registry: SkillRegistry, skill: SkillSpec, query_terms: set[str] | None = None) -> dict:
@@ -1035,7 +1065,17 @@ class SkillRegistry:
 
     def _save(self) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(json.dumps({"disabled": sorted(self.disabled)}, indent=2) + "\n")
+        data = json.dumps({"disabled": sorted(self.disabled)}, indent=2) + "\n"
+        fd, tmp = tempfile.mkstemp(prefix=self.config_path.name + ".", suffix=".tmp", dir=str(self.config_path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.config_path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
 
     def _refresh(self) -> None:
         skills = [
@@ -1047,28 +1087,39 @@ class SkillRegistry:
         skills.extend(self._load_manifest_skills())
         by_name: dict[str, SkillSpec] = {}
         duplicates: list[str] = []
+        by_tool: dict[str, list[SkillSpec]] = {}
         by_tag: dict[str, list[SkillSpec]] = {}
         by_capability: dict[str, list[SkillSpec]] = {}
         by_phase: dict[str, list[SkillSpec]] = {}
+        by_risk: dict[str, list[SkillSpec]] = {}
+        by_source: dict[str, list[SkillSpec]] = {}
         for skill in skills:
             if skill.name in by_name:
                 duplicates.append(skill.name)
             by_name[skill.name] = skill
+            if skill.tool:
+                by_tool.setdefault(skill.tool.name, []).append(skill)
             for tag in skill.tags:
                 by_tag.setdefault(tag, []).append(skill)
             for cap in skill.capabilities:
                 by_capability.setdefault(cap, []).append(skill)
             by_phase.setdefault(skill.phase, []).append(skill)
+            by_risk.setdefault(skill.risk, []).append(skill)
+            source = "manifest" if skill.source not in {"builtin", "tool"} else skill.source
+            by_source.setdefault(source, []).append(skill)
         if duplicates:
             raise ValueError("duplicate skill names: " + ", ".join(sorted(set(duplicates))))
-        for bucket in (by_tag, by_capability, by_phase):
+        for bucket in (by_tool, by_tag, by_capability, by_phase, by_risk, by_source):
             for values in bucket.values():
                 values.sort(key=lambda x: (-x.priority, x.name))
         self._skills = sorted(skills, key=lambda x: (-x.priority, x.name))
         self._by_name = by_name
+        self._by_tool = by_tool
         self._by_tag = by_tag
         self._by_capability = by_capability
         self._by_phase = by_phase
+        self._by_risk = by_risk
+        self._by_source = by_source
         self._skillset_digest = _json_sha256({"skills": [skill_to_manifest(s) for s in self._skills]})
 
     def _load_manifest_skills(self) -> list[SkillSpec]:
@@ -1098,10 +1149,29 @@ class SkillRegistry:
     def all(self) -> list[SkillSpec]:
         return list(self._skills)
 
+    def _selected_pool(self, selected: set[str] | None) -> list[SkillSpec] | None:
+        if not selected:
+            return None
+        picked: dict[str, SkillSpec] = {}
+        for item in selected:
+            skill = self._by_name.get(item)
+            if skill:
+                picked[skill.name] = skill
+            for skill in self._by_tool.get(item, ()):
+                picked[skill.name] = skill
+            for prefix, bucket in (("tag:", self._by_tag), ("cap:", self._by_capability), ("capability:", self._by_capability), ("phase:", self._by_phase), ("risk:", self._by_risk), ("source:", self._by_source)):
+                if item.startswith(prefix):
+                    for skill in bucket.get(item.split(":", 1)[1], ()):
+                        picked[skill.name] = skill
+        return sorted(picked.values(), key=lambda x: (-x.priority, x.name))
+
     def candidates(self, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None, limit: int | None = None, query: str = "", executable_only: bool = False) -> list[SkillSpec]:
         query_terms = _terms(query)
         scored: list[tuple[int, SkillSpec]] = []
-        if profile == "quick":
+        selected_pool = self._selected_pool(selected)
+        if selected_pool is not None:
+            pool = selected_pool
+        elif profile == "quick":
             pool = [s for phase in ("recon", "fingerprint") for s in self._by_phase.get(phase, [])]
         elif profile != "deep":
             pool = [s for phase, values in self._by_phase.items() if phase != "bruteforce" for s in values]
@@ -1110,7 +1180,7 @@ class SkillRegistry:
         for skill in pool:
             if executable_only and not skill.tool:
                 continue
-            if selected and skill.name not in selected and not (skill.tool and skill.tool.name in selected):
+            if not skill_selected(skill, selected):
                 continue
             reason = self.skip_reason(skill, target, profile, selected, policy)
             if reason:
@@ -1131,7 +1201,7 @@ class SkillRegistry:
         tool = skill.tool
         if not skill.enabled:
             return "disabled"
-        if selected and skill.name not in selected and (not tool or tool.name not in selected):
+        if not skill_selected(skill, selected):
             return "not selected"
         dep_reason = self._dependency_skip_reason(skill, target, profile, policy)
         if dep_reason:
@@ -1259,7 +1329,7 @@ class Agent:
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
     def run(self) -> None:
-        selected = set(filter(None, (self.args.tools or "").split(","))) or None
+        selected = skill_selectors(self.args.tools)
         seen: set[str] = set()
         pending = list(self.targets)
         steps_left = self.args.max_steps
@@ -1375,7 +1445,8 @@ class Agent:
         for task in tasks:
             skill_name = str(task.get("skill", ""))
             raw_target = str(task.get("target", ""))
-            if selected and skill_name not in selected:
+            skill = self.skill_registry.get(skill_name)
+            if selected and (not skill or not skill_selected(skill, selected)):
                 continue
             with contextlib.suppress(ValueError):
                 target = normalize_target(raw_target)
@@ -2032,7 +2103,7 @@ def _refs_from_db(value: object) -> list[str]:
 
 
 def ai_skill_candidates(targets: Sequence[Target], skills: SkillRegistry, args: argparse.Namespace, policy: Policy | None, limit: int = 30) -> list[dict]:
-    selected = set(filter(None, str(getattr(args, "tools", "") or "").split(","))) or None
+    selected = skill_selectors(getattr(args, "tools", ""))
     profile = getattr(args, "profile", "standard")
     query = " ".join(t.raw for t in targets)
     out: list[dict] = []
@@ -2317,7 +2388,7 @@ def cmd_skills(args: argparse.Namespace) -> int:
     if args.skill_cmd == "explain":
         target = normalize_target(args.target)
         policy = load_policy(args.policy, [target]) if getattr(args, "policy", "") else None
-        selected = set(filter(None, (getattr(args, "tools", "") or "").split(","))) or None
+        selected = skill_selectors(getattr(args, "tools", ""))
         allow_intrusive = bool(getattr(args, "approve_intrusive", False) and (not policy or policy.intrusive_approved))
         print(json.dumps(explain_skill_routing(registry, target, args.profile, allow_intrusive, selected, policy, args.limit, args.query, args.include_skipped), indent=2, ensure_ascii=False))
         return 0
@@ -2819,7 +2890,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-steps", type=int, default=16, help="max external tool tasks")
     run.add_argument("--max-workers", type=int, default=4)
     run.add_argument("--timeout", type=float, default=120.0, help="per tool timeout seconds")
-    run.add_argument("--tools", help="comma-separated tool allowlist, e.g. nmap,nuclei")
+    run.add_argument("--tools", help="comma-separated skill/tool selectors, e.g. nmap,nuclei,cap:web,tag:headers")
     run.add_argument("--skills-dir", default=os.getenv("AUTOATTACK_SKILLS_DIR", ""), help="directory of JSON skill manifests")
     run.add_argument("--execution-mode", choices=["local", "queue"], default="local", help="local executes immediately; queue plans jobs for distributed workers")
     run.add_argument("--distributed", action="store_true", help="alias for --execution-mode queue")
@@ -2875,7 +2946,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_explain = skill_sub.add_parser("explain", help="explain skill routing for one target")
     skills_explain.add_argument("target")
     skills_explain.add_argument("--profile", choices=["quick", "standard", "deep"], default="standard")
-    skills_explain.add_argument("--tools", default="", help="comma-separated skill/tool allowlist")
+    skills_explain.add_argument("--tools", default="", help="comma-separated skill/tool selectors, e.g. nmap,cap:web,tag:headers")
     skills_explain.add_argument("--policy", default="", help="policy JSON path")
     skills_explain.add_argument("--limit", type=int, default=30)
     skills_explain.add_argument("--query", default="")
