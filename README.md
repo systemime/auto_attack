@@ -135,7 +135,7 @@ Redis 只负责 job queue；状态、证据、报告仍写入 workspace。跨节
 python3 autoattack_agent.py web runs/local --host 127.0.0.1 --port 8765
 ```
 
-控制台展示 status、findings、tasks、jobs、approval，并可 approve/deny pending approval。不要直接暴露公网；远程访问放到 SSH tunnel、VPN 或带认证的反向代理后面。
+控制台展示 status、skill stats/trend、findings、tasks、jobs、approval，并可 approve/deny pending approval。不要直接暴露公网；远程访问放到 SSH tunnel、VPN 或带认证的反向代理后面。
 
 ## Skills / approval / AI planner
 

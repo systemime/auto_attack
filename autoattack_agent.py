@@ -2942,6 +2942,8 @@ def api_payload(workspace: Path, name: str, query: str = "") -> object:
     store = Store(workspace / "state.sqlite3")
     if name == "status":
         return status_payload(workspace)
+    if name == "skill_stats":
+        return skill_stats(store)
     if name in {"findings", "tasks", "events", "job_queue", "approval_requests", "skill_runs", "tool_runs"}:
         qs = urllib.parse.parse_qs(query)
         limit = _query_int(qs, "limit", 200)
@@ -2958,6 +2960,7 @@ def render_console(workspace: Path) -> str:
     jobs = [dict(r) for r in store.rows("job_queue", 20, recent=True)]
     approvals = [dict(r) for r in store.rows("approval_requests", 20, recent=True)]
     tasks = [dict(r) for r in store.rows("tasks", 30, recent=True)]
+    skills = skill_stats(store, limit=10)
     def esc(v: object) -> str:
         return html.escape(str(v))
     def table(rows: list[dict], cols: list[str]) -> str:
@@ -2988,7 +2991,11 @@ button{{margin:2px;padding:4px 8px}} code{{color:#ffd479}}
 <div class='card'><b>tasks</b><br>{esc(status.get('tasks'))}</div>
 <div class='card'><b>job_queue</b><br>{esc(status.get('job_queue'))}</div>
 </div>
-<p>JSON: <a href="/api/status">status</a> · <a href="/api/findings">findings</a> · <a href="/api/tasks">tasks</a> · <a href="/api/job_queue">jobs</a> · <a href="/api/events">events</a></p>
+<p>JSON: <a href="/api/status">status</a> · <a href="/api/findings">findings</a> · <a href="/api/tasks">tasks</a> · <a href="/api/job_queue">jobs</a> · <a href="/api/events">events</a> · <a href="/api/skill_stats">skill_stats</a></p>
+<h2>Skill Stats</h2>
+<div class="cards"><div class='card'><b>skill_runs</b><br>{esc(skills['skill_runs']['total'])}</div><div class='card'><b>routing</b><br>{esc(skills['routing'])}</div></div>
+{table(skills['skill_runs']['top_skills'], ['skill','total','status'])}
+{table(skills['trend'], ['day','skill_runs','by_status'])}
 <h2>Approvals</h2>{table(approval_rows, ['id','status','target','skill','tool','risk','reason','action'])}
 <h2>Recent Findings</h2>{table(findings, ['id','severity','title','target','source','confidence','validation_status'])}
 <h2>Recent Jobs</h2>{table(jobs, ['id','status','tool','target','attempts','lease_owner','detail'])}

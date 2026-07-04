@@ -6,7 +6,7 @@
 
 **已具备大量 skills 的生产级基础设施雏形。** 当前机制不再依赖纯硬编码 skill 列表，已经支持 JSON manifest 规范化、目录加载、元数据索引、Top-K 候选召回、工具绑定、冲突控制、policy/profile/target 过滤、审批、queue/worker 和审计记录。
 
-仍不能称为完整大型插件生态：缺少 embedding/vector retrieval 和更完整的图形化 trace/trend UI；未来新增 schema v2 时还需要补对应迁移。
+仍不能称为完整大型插件生态：缺少 embedding/vector retrieval 和更完整的图形化 trace UI；未来新增 schema v2 时还需要补对应迁移。
 
 ## 当前已具备
 
@@ -54,7 +54,7 @@
 
 - 已有 `depends_on` 存在性/可用性/版本约束、agent 版本范围校验和 schema v0/legacy alias 迁移；未来新增 schema v2 时还需要继续补对应迁移。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
-- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归、`skills stats` 跨 workspace 聚合与 `skills trace` 时间线；长期趋势图表仍未内置，当前提供 JSON trend 聚合。
+- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归、`skills stats` 跨 workspace 聚合与 `skills trace` 时间线；长期趋势已提供 JSON trend 和 Web 摘要，图形化 trace UI 仍未内置。
 - `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
 - enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
 - SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
