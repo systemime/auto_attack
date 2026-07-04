@@ -1148,12 +1148,13 @@ def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, a
         "skillset_sha256": skills.skillset_digest,
         "counts": {"total": len(skills.all()), "candidates": len(candidates), "planned": len(plans), "skipped_reported": len(skipped)},
         "skipped_reason_counts": reason_counts,
-        "candidates": [skill_candidate_payload(skill) | {"score": skills.match_score(skill, query_terms)} for skill in candidates],
+        "candidates": [skill_candidate_payload(skill) | skills.score_detail(skill, query_terms) for skill in candidates],
         "plans": [{
             "skill": plan.skill.name,
             "tool": plan.skill.tool.name if plan.skill.tool else "",
             "status": plan.status,
             "score": plan.score,
+            "score_detail": skills.score_detail(plan.skill, query_terms)["score_detail"],
             "risk": plan.skill.risk,
             "reason": plan.reason,
             "conflicts": list(plan.skill.conflicts),
@@ -1564,6 +1565,10 @@ class SkillRegistry:
         terms = _skill_terms(skill)
         score += sum(10 * self._term_weight.get(term, 1) for term in query_terms if term in terms)
         return score
+
+    def score_detail(self, skill: SkillSpec, query_terms: set[str]) -> dict:
+        matched = sorted(term for term in query_terms if term in _skill_terms(skill))
+        return {"score": self.match_score(skill, query_terms), "score_detail": {"priority": int(skill.priority), "matched_terms": matched, "term_weights": {term: self._term_weight.get(term, 1) for term in matched}}}
 
     def skip_reason(self, skill: SkillSpec, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None) -> str:
         tool = skill.tool

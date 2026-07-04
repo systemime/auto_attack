@@ -605,6 +605,7 @@ class AutoAttackTests(unittest.TestCase):
             self.assertNotIn("catalog.only", {c["name"] for c in candidates})
             explained = aa.explain_skill_routing(skills, aa.normalize_target("example.com"), "deep", False, query="web scan")
             self.assertEqual(explained["plans"][0]["skill"], "dummy.high")
+            self.assertIn("web", explained["plans"][0]["score_detail"]["matched_terms"])
             self.assertEqual(explained["plans"][0]["depends_on"], ["dummy.base"])
             self.assertTrue(any(x["skill"] == "dummy.low" and x["reason"] == "conflict" for x in explained["skipped"]))
             self.assertTrue(any(x["skill"] == "dummy.blocked" and "missing dependency" in x["reason"] for x in explained["skipped"]))

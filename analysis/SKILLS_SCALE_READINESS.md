@@ -33,7 +33,7 @@
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
 5. **排序**：按 term 倒排召回 + priority/query term 权重分排序，AI planner 默认最多拿 30 个可执行候选。
 6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on/dependency_versions、intrusive approval 和 conflicts。
-7. **解释/评估**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，`skills eval` 做路由回归，`skills stats` 聚合单 workspace 或 runs 目录下的 skill_runs/routing events，`skills trace` 输出目标/skill 时间线。
+7. **解释/评估**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突、分数和命中 term 权重，`skills eval` 做路由回归，`skills stats` 聚合单 workspace 或 runs 目录下的 skill_runs/routing events，`skills trace` 输出目标/skill 时间线。
 8. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
 
 ## 对照主流生产机制
