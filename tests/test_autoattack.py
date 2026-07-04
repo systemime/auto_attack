@@ -635,6 +635,7 @@ class AutoAttackTests(unittest.TestCase):
                 rc, stats = self._capture_json(["skills", "stats", str(runs)])
                 self.assertEqual(rc, 0)
                 self.assertEqual(stats["skill_runs"]["total"], 2)
+                self.assertTrue(stats["trend"])
                 self.assertEqual(stats["routing"]["planned"], 2)
                 self.assertEqual(stats["routing"]["skipped_reason_counts"]["conflict"], 2)
                 rc, trace = self._capture_json(["skills", "trace", str(runs / "r1"), "--skill", "dummy.high"])

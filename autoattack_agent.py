@@ -1220,6 +1220,7 @@ def eval_skill_routing(skills: SkillRegistry, path: Path, policy: Policy | None 
 def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
     with store.lock:
         skill_rows = store.db.execute("select skill,status,count(*) c from skill_runs group by skill,status").fetchall()
+        trend_rows = store.db.execute("select substr(ts,1,10) day,status,count(*) c from skill_runs group by day,status").fetchall()
         runtime_rows = store.db.execute(
             """select sr.skill skill, count(*) c, sum(tr.seconds) total, avg(tr.seconds) avg, max(tr.seconds) max
                from skill_runs sr join tool_runs tr on sr.command_digest=tr.digest
@@ -1229,6 +1230,13 @@ def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
         routing_rows = store.db.execute("select data from events where kind='skill_routing_summary' order by id desc limit ?", (max(0, int(max_events or 0)) or 1000,)).fetchall()
     by_skill: dict[str, dict] = {}
     status_totals: dict[str, int] = {}
+    trend: dict[str, dict] = {}
+    for row in trend_rows:
+        day = row["day"] or ""
+        item = trend.setdefault(day, {"day": day, "skill_runs": 0, "by_status": {}})
+        count = int(row["c"])
+        item["skill_runs"] += count
+        item["by_status"][row["status"] or ""] = count
     for row in skill_rows:
         skill = row["skill"] or ""
         status = row["status"] or ""
@@ -1267,6 +1275,7 @@ def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
     limit = max(0, int(limit or 0))
     return {
         "skill_runs": {"total": sum(status_totals.values()), "by_status": dict(sorted(status_totals.items())), "top_skills": top[:limit] if limit else top},
+        "trend": [trend[day] for day in sorted(trend)],
         "runtime": runtime,
         "routing": {
             "events": routed_targets,
@@ -1280,8 +1289,9 @@ def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
 
 def skill_stats_workspaces(path: Path, limit: int = 20, max_events: int = 1000, recursive: bool = False) -> dict:
     dbs = sorted(path.rglob("state.sqlite3") if recursive else path.glob("*/state.sqlite3")) if path.is_dir() and not (path / "state.sqlite3").exists() else [path / "state.sqlite3"]
-    total = {"workspaces": [], "skill_runs": {"total": 0, "by_status": {}, "top_skills": []}, "runtime": {"count": 0, "seconds_total": 0.0, "seconds_avg": 0.0, "seconds_max": 0.0}, "routing": {"events": 0, "candidates": 0, "planned": 0, "plan_status": {}, "skipped_reason_counts": {}}}
+    total = {"workspaces": [], "skill_runs": {"total": 0, "by_status": {}, "top_skills": []}, "trend": [], "runtime": {"count": 0, "seconds_total": 0.0, "seconds_avg": 0.0, "seconds_max": 0.0}, "routing": {"events": 0, "candidates": 0, "planned": 0, "plan_status": {}, "skipped_reason_counts": {}}}
     by_skill: dict[str, dict] = {}
+    trend: dict[str, dict] = {}
     for db in [p for p in dbs if p.exists()]:
         stats = skill_stats(Store(db), 0, max_events)
         total["workspaces"].append(str(db.parent))
@@ -1293,6 +1303,11 @@ def skill_stats_workspaces(path: Path, limit: int = 20, max_events: int = 1000, 
             merged["total"] += item["total"]
             for key, value in item["status"].items():
                 merged["status"][key] = merged["status"].get(key, 0) + value
+        for item in stats.get("trend", []):
+            merged = trend.setdefault(item["day"], {"day": item["day"], "skill_runs": 0, "by_status": {}})
+            merged["skill_runs"] += item["skill_runs"]
+            for key, value in item["by_status"].items():
+                merged["by_status"][key] = merged["by_status"].get(key, 0) + value
         total["runtime"]["count"] += stats["runtime"]["count"]
         total["runtime"]["seconds_total"] += stats["runtime"]["seconds_total"]
         total["runtime"]["seconds_max"] = max(total["runtime"]["seconds_max"], stats["runtime"]["seconds_max"])
@@ -1306,6 +1321,7 @@ def skill_stats_workspaces(path: Path, limit: int = 20, max_events: int = 1000, 
     total["runtime"] = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in total["runtime"].items()}
     total["skill_runs"]["by_status"] = dict(sorted(total["skill_runs"]["by_status"].items()))
     total["skill_runs"]["top_skills"] = sorted(by_skill.values(), key=lambda x: (-int(x["total"]), x["skill"]))[:max(0, int(limit or 0)) or None]
+    total["trend"] = [trend[day] for day in sorted(trend)]
     total["routing"]["plan_status"] = dict(sorted(total["routing"]["plan_status"].items()))
     total["routing"]["skipped_reason_counts"] = dict(sorted(total["routing"]["skipped_reason_counts"].items()))
     return total

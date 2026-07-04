@@ -6,7 +6,7 @@
 
 **已具备大量 skills 的生产级基础设施雏形。** 当前机制不再依赖纯硬编码 skill 列表，已经支持 JSON manifest 规范化、目录加载、元数据索引、Top-K 候选召回、工具绑定、冲突控制、policy/profile/target 过滤、审批、queue/worker 和审计记录。
 
-仍不能称为完整大型插件生态：缺少 embedding/vector retrieval、跨 run 长期趋势和更完整的 trace UI；未来新增 schema v2 时还需要补对应迁移。
+仍不能称为完整大型插件生态：缺少 embedding/vector retrieval 和更完整的图形化 trace/trend UI；未来新增 schema v2 时还需要补对应迁移。
 
 ## 当前已具备
 
@@ -20,7 +20,7 @@
 | Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term inverted index/weight、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选摘要和 contract digest。 |
-| Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats`、`skills trace` 覆盖候选、计划、跳过原因、回归门禁、执行耗时、跨 workspace 聚合统计和单目标/skill 时间线；真实 run 写入 `skill_routing_summary` 事件。 |
+| Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats`、`skills trace` 覆盖候选、计划、跳过原因、回归门禁、执行耗时、trend、跨 workspace 聚合统计和单目标/skill 时间线；真实 run 写入 `skill_routing_summary` 事件。 |
 | Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引和热点分页读取。 |
 | Queue/concurrency | local thread pool、SQLite queue、Redis queue、worker lease/retry；queue 记录 skill 名称。 |
 | Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、depends_on、conflicts。 |
@@ -54,7 +54,7 @@
 
 - 已有 `depends_on` 存在性/可用性/版本约束、agent 版本范围校验和 schema v0/legacy alias 迁移；未来新增 schema v2 时还需要继续补对应迁移。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
-- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归、`skills stats` 跨 workspace 聚合与 `skills trace` 时间线；长期趋势图表仍未内置。
+- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归、`skills stats` 跨 workspace 聚合与 `skills trace` 时间线；长期趋势图表仍未内置，当前提供 JSON trend 聚合。
 - `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
 - enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
 - SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
