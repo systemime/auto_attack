@@ -483,6 +483,24 @@ class AutoAttackTests(unittest.TestCase):
             args = argparse.Namespace(tools="", profile="deep")
             candidates = aa.ai_skill_candidates([aa.normalize_target("example.com")], skills, args, None, limit=10)
             self.assertNotIn("catalog.only", {c["name"] for c in candidates})
+            explained = aa.explain_skill_routing(skills, aa.normalize_target("example.com"), "deep", False, query="web scan")
+            self.assertEqual(explained["plans"][0]["skill"], "dummy.high")
+            self.assertTrue(any(x["skill"] == "dummy.low" and x["reason"] == "conflict" for x in explained["skipped"]))
+            old_registry = aa.ToolRegistry
+            class FakeRegistry:
+                def __init__(self):
+                    self.tools = [tool]
+                def get(self, name):
+                    return tool if name == "dummy" else None
+                def is_available(self, _tool):
+                    return True
+            aa.ToolRegistry = FakeRegistry
+            try:
+                rc, explained_cli = self._capture_json(["skills", "--skills-dir", str(skills_dir), "explain", "example.com", "--profile", "deep", "--query", "web scan"])
+                self.assertEqual(rc, 0)
+                self.assertEqual(explained_cli["plans"][0]["skill"], "dummy.high")
+            finally:
+                aa.ToolRegistry = old_registry
 
     def test_no_policy_requires_smoke(self):
         with self.assertRaises(SystemExit):

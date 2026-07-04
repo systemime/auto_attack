@@ -20,6 +20,7 @@
 | Router | 按 enabled、selected、availability、policy、profile、target type、priority、query term、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选 metadata。 |
+| Routing explainability | `skills explain` 输出 candidates/plans/skipped/score/skillset_sha256，支持海量 skills 选择审计。 |
 | Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引。 |
 | Queue/concurrency | local thread pool、SQLite queue、Redis queue、worker lease/retry；queue 记录 skill 名称。 |
 | Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、conflicts。 |
@@ -32,7 +33,8 @@
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
 6. **路由**：`SkillRouter` 只计划可执行 skill，处理 intrusive approval 和 conflicts。
-7. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
+7. **解释**：`skills explain` 展示候选、计划、跳过原因、冲突和分数，便于审计路由效果。
+8. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
 
 ## 对照主流生产机制
 
@@ -44,7 +46,7 @@
 | Dynamic filtering/routing | policy/profile/target/query/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
-| Observability/tracing/eval | events/tool_runs/skill_runs/report | 部分达标；无选择评估集/trace UI |
+| Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` | 部分达标；无选择评估集/trace UI |
 | Version/dependency management | manifest version、Docker 工具版本固定 | 部分达标；无 dependency/schema migration |
 | Queue/concurrency/durable execution | Redis/SQLite queue、lease、worker | 基础达标 |
 

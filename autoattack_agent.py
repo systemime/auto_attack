@@ -791,6 +791,49 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
     }
 
 
+def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None, limit: int = 30, query: str = "", include_skipped: int = 20) -> dict:
+    query_terms = _terms(query or target.raw)
+    candidates = skills.candidates(target, profile, selected, policy, limit, query or target.raw, executable_only=True)
+    router = SkillRouter(skills)
+    plans = router.plan(target, profile, allow_intrusive, selected, policy, limit, query or target.raw)
+    plan_names = {plan.skill.name for plan in plans}
+    candidate_names = {skill.name for skill in candidates}
+    conflicts = {name for plan in plans for name in plan.skill.conflicts}
+    skipped: list[dict] = []
+    skipped_names: set[str] = set()
+    for name in sorted((conflicts & candidate_names) - plan_names):
+        skipped.append({"skill": name, "reason": "conflict"})
+        skipped_names.add(name)
+    for skill in skills.all():
+        if len(skipped) >= include_skipped:
+            break
+        if skill.name in plan_names or skill.name in skipped_names:
+            continue
+        reason = "builtin_internal" if skill.name == "python-recon" else ("metadata_only" if not skill.tool else skills.skip_reason(skill, target, profile, selected, policy))
+        if reason:
+            skipped.append({"skill": skill.name, "reason": reason})
+            skipped_names.add(skill.name)
+    return {
+        "target": {"raw": target.raw, "kind": target.kind, "is_url": target.is_url},
+        "profile": profile,
+        "selected": sorted(selected or []),
+        "query": query,
+        "skillset_sha256": skills.skillset_digest,
+        "counts": {"total": len(skills.all()), "candidates": len(candidates), "planned": len(plans), "skipped_reported": len(skipped)},
+        "candidates": [skill_candidate_payload(skill) | {"score": skills.match_score(skill, query_terms)} for skill in candidates],
+        "plans": [{
+            "skill": plan.skill.name,
+            "tool": plan.skill.tool.name if plan.skill.tool else "",
+            "status": plan.status,
+            "score": plan.score,
+            "risk": plan.skill.risk,
+            "reason": plan.reason,
+            "conflicts": list(plan.skill.conflicts),
+        } for plan in plans],
+        "skipped": skipped,
+    }
+
+
 class ToolRegistry:
     def __init__(self):
         self.tools = _default_tools()
@@ -2091,6 +2134,13 @@ def cmd_skills(args: argparse.Namespace) -> int:
     if args.skill_cmd == "test":
         print(json.dumps(registry.test(args.name), indent=2, ensure_ascii=False))
         return 0
+    if args.skill_cmd == "explain":
+        target = normalize_target(args.target)
+        policy = load_policy(args.policy, [target]) if getattr(args, "policy", "") else None
+        selected = set(filter(None, (getattr(args, "tools", "") or "").split(","))) or None
+        allow_intrusive = bool(getattr(args, "approve_intrusive", False) and (not policy or policy.intrusive_approved))
+        print(json.dumps(explain_skill_routing(registry, target, args.profile, allow_intrusive, selected, policy, args.limit, args.query, args.include_skipped), indent=2, ensure_ascii=False))
+        return 0
     if args.skill_cmd in {"enable", "disable"}:
         ok = registry.enable(args.name, args.skill_cmd == "enable")
         print(json.dumps({"name": args.name, "enabled": args.skill_cmd == "enable", "ok": ok}, indent=2))
@@ -2629,6 +2679,16 @@ def build_parser() -> argparse.ArgumentParser:
     skills_validate = skill_sub.add_parser("validate", help="validate a JSON skill manifest or directory")
     skills_validate.add_argument("path")
     skills_validate.set_defaults(func=cmd_skills)
+    skills_explain = skill_sub.add_parser("explain", help="explain skill routing for one target")
+    skills_explain.add_argument("target")
+    skills_explain.add_argument("--profile", choices=["quick", "standard", "deep"], default="standard")
+    skills_explain.add_argument("--tools", default="", help="comma-separated skill/tool allowlist")
+    skills_explain.add_argument("--policy", default="", help="policy JSON path")
+    skills_explain.add_argument("--limit", type=int, default=30)
+    skills_explain.add_argument("--query", default="")
+    skills_explain.add_argument("--include-skipped", type=int, default=20)
+    skills_explain.add_argument("--approve-intrusive", action="store_true")
+    skills_explain.set_defaults(func=cmd_skills)
     for name in ("enable", "disable"):
         p = skill_sub.add_parser(name, help=f"{name} a local skill")
         p.add_argument("name")
