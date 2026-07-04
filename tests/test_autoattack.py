@@ -458,6 +458,12 @@ class AutoAttackTests(unittest.TestCase):
             self.assertIn("web.headers", by_name)
             self.assertEqual(by_name["web.headers"]["source"], str(manifest))
             self.assertEqual(by_name["web.headers"]["priority"], 88)
+            rc, page = self._capture_json(["skills", "--skills-dir", str(skills_dir), "list", "--source", "manifest", "--query", "headers", "--limit", "1", "--summary"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(page["total"], 1)
+            self.assertEqual(page["returned"], 1)
+            self.assertEqual(page["skills"][0]["name"], "web.headers")
+            self.assertEqual(page["skills"][0]["depends_on"], ["python-recon"])
             bad_dir = root / "bad"
             bad_dir.mkdir()
             (bad_dir / "bad.json").write_text(json.dumps({"name": "bad.dep", "description": "bad", "depends_on": ["missing.skill"]}))

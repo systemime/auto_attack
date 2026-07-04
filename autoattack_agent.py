@@ -820,6 +820,55 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
     }
 
 
+def skill_list_row(registry: SkillRegistry, skill: SkillSpec, query_terms: set[str] | None = None) -> dict:
+    row = skill_to_manifest(skill)
+    row["available"] = registry.is_available(skill.tool) if skill.tool else True
+    row["score"] = registry.match_score(skill, query_terms or set())
+    return row
+
+
+def filter_skill_rows(registry: SkillRegistry, args: argparse.Namespace) -> tuple[list[dict], int]:
+    query_terms = _terms(getattr(args, "query", ""))
+    rows: list[dict] = []
+    for skill in registry.all():
+        source = "manifest" if skill.source not in {"builtin", "tool"} else skill.source
+        if getattr(args, "phase", "") and skill.phase != args.phase:
+            continue
+        if getattr(args, "risk", "") and skill.risk != args.risk:
+            continue
+        if getattr(args, "source", "") and source != args.source:
+            continue
+        if getattr(args, "state", "all") == "enabled" and not skill.enabled:
+            continue
+        if getattr(args, "state", "all") == "disabled" and skill.enabled:
+            continue
+        if getattr(args, "executable", False) and not skill.tool:
+            continue
+        if getattr(args, "tag", "") and args.tag not in skill.tags:
+            continue
+        if getattr(args, "capability", "") and args.capability not in skill.capabilities:
+            continue
+        text = " ".join((skill.name, skill.phase, skill.risk, skill.description, *skill.tags, *skill.capabilities, *skill.depends_on)).lower()
+        if query_terms and not all(term in text for term in query_terms):
+            continue
+        row = skill_list_row(registry, skill, query_terms)
+        if getattr(args, "available", False) and not row["available"]:
+            continue
+        rows.append(row)
+    sort_key = getattr(args, "sort", "priority")
+    if sort_key == "name":
+        rows.sort(key=lambda r: r["name"])
+    elif sort_key == "phase":
+        rows.sort(key=lambda r: (r["phase"], -int(r["priority"]), r["name"]))
+    else:
+        rows.sort(key=lambda r: (-int(r["score"]), -int(r["priority"]), r["name"]))
+    total = len(rows)
+    offset = max(0, int(getattr(args, "offset", 0) or 0))
+    limit = max(0, int(getattr(args, "limit", 0) or 0))
+    rows = rows[offset: offset + limit] if limit else rows[offset:]
+    return rows, total
+
+
 def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None, limit: int = 30, query: str = "", include_skipped: int = 20) -> dict:
     query_terms = _terms(query or target.raw)
     candidates = skills.candidates(target, profile, selected, policy, limit, query or target.raw, executable_only=True)
@@ -2209,27 +2258,17 @@ def cmd_skills(args: argparse.Namespace) -> int:
         return 0 if ok else 1
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
     if args.skill_cmd == "list":
-        rows = []
-        for skill in registry.all():
-            rows.append({
-                "name": skill.name,
-                "version": skill.version,
-                "phase": skill.phase,
-                "risk": skill.risk,
-                "enabled": skill.enabled,
-                "requires_approval": skill.requires_approval,
-                "tool": skill.tool.name if skill.tool else "",
-                "available": registry.is_available(skill.tool) if skill.tool else True,
-                "source": skill.source,
-                "tags": list(skill.tags),
-                "capabilities": list(skill.capabilities),
-                "priority": skill.priority,
-                "needs_url": skill.needs_url,
-                "conflicts": list(skill.conflicts),
-                "depends_on": list(skill.depends_on),
-                "description": skill.description,
-            })
-        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        rows, total = filter_skill_rows(registry, args)
+        if getattr(args, "summary", False):
+            by_phase: dict[str, int] = {}
+            by_source: dict[str, int] = {}
+            for row in rows:
+                by_phase[row["phase"]] = by_phase.get(row["phase"], 0) + 1
+                source = "manifest" if row["source"] not in {"builtin", "tool"} else row["source"]
+                by_source[source] = by_source.get(source, 0) + 1
+            print(json.dumps({"total": total, "returned": len(rows), "offset": args.offset, "limit": args.limit, "by_phase": by_phase, "by_source": by_source, "skills": rows}, indent=2, ensure_ascii=False))
+        else:
+            print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
     if args.skill_cmd == "test":
         print(json.dumps(registry.test(args.name), indent=2, ensure_ascii=False))
@@ -2769,6 +2808,19 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("--skills-dir", default=os.getenv("AUTOATTACK_SKILLS_DIR", ""), help="directory of JSON skill manifests")
     skill_sub = skills.add_subparsers(dest="skill_cmd", required=True)
     skills_list = skill_sub.add_parser("list", help="list local skills")
+    skills_list.add_argument("--phase", choices=sorted(ALLOWED_SKILL_PHASES), default="")
+    skills_list.add_argument("--risk", choices=sorted(ALLOWED_SKILL_RISKS), default="")
+    skills_list.add_argument("--source", choices=["builtin", "tool", "manifest"], default="")
+    skills_list.add_argument("--state", choices=["all", "enabled", "disabled"], default="all")
+    skills_list.add_argument("--tag", default="")
+    skills_list.add_argument("--capability", default="")
+    skills_list.add_argument("--query", default="")
+    skills_list.add_argument("--limit", type=int, default=0)
+    skills_list.add_argument("--offset", type=int, default=0)
+    skills_list.add_argument("--sort", choices=["priority", "name", "phase"], default="priority")
+    skills_list.add_argument("--executable", action="store_true")
+    skills_list.add_argument("--available", action="store_true")
+    skills_list.add_argument("--summary", action="store_true")
     skills_list.set_defaults(func=cmd_skills)
     skills_test = skill_sub.add_parser("test", help="test a local skill manifest/build/parser")
     skills_test.add_argument("name")

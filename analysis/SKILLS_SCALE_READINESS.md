@@ -14,13 +14,13 @@
 |---|---|
 | Registry | `python-recon` + `ToolRegistry.tools` + JSON manifest skills，by-name 缓存和 duplicate 检测。 |
 | Manifest | `skills normalize/validate`，字段规范化：name/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts。 |
-| Enable/disable | `skills list/test/enable/disable`，禁用状态持久化到 JSON。 |
+| Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态持久化到 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/depends_on/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
 | Router | 按 enabled、selected、availability、policy、profile、target type、depends_on、priority、query term、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选 metadata。 |
-| Routing explainability | `skills explain` 输出 candidates/plans/skipped/score/skillset_sha256，支持海量 skills 选择审计。 |
+| Routing explainability | `skills list --summary` 与 `skills explain` 输出 candidates/plans/skipped/score/skillset_sha256，支持海量 skills 选择审计。 |
 | Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引。 |
 | Queue/concurrency | local thread pool、SQLite queue、Redis queue、worker lease/retry；queue 记录 skill 名称。 |
 | Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、depends_on、conflicts。 |
@@ -29,11 +29,11 @@
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
 2. **规范化**：manifest 统一校验 name、phase、risk、priority、tags、capabilities、depends_on、conflicts、needs_url 等字段。
-3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`。
+3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
 6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on、intrusive approval 和 conflicts。
-7. **解释**：`skills explain` 展示候选、计划、跳过原因、冲突和分数，便于审计路由效果。
+7. **解释**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，便于审计路由效果。
 8. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
 
 ## 对照主流生产机制
@@ -56,7 +56,7 @@
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
 - 无二级详情加载；候选只给 metadata。
 - router 对 skipped reason、latency、选择分数的长期统计仍不完整。
-- `Store.rows()` 仍偏全表读取；大规模长期运行需要分页 API。
+- `skills list` 已有分页；`Store.rows()` 仍偏全表读取，长期运行的 events/findings/tasks 还需要分页 API。
 - enable/disable JSON 没有跨进程文件锁。
 - SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
 
