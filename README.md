@@ -117,7 +117,7 @@ python3 autoattack_agent.py run 127.0.0.1 \
   --redis-url redis://127.0.0.1:6379/0 \
   --max-steps 4
 
-python3 autoattack_agent.py jobs /shared/run1
+python3 autoattack_agent.py jobs /shared/run1 --limit 50 --recent
 python3 autoattack_agent.py worker /shared/run1 \
   --worker-id node-a \
   --queue-backend redis \
@@ -237,7 +237,7 @@ workspace/
   events.jsonl
 ```
 
-`state.sqlite3` 包含：`runs/tasks/observations/findings/command_cache/tool_runs/artifacts/events/skills/skill_runs/approval_requests/job_queue`。
+`state.sqlite3` 包含：`runs/tasks/observations/findings/command_cache/tool_runs/artifacts/events/skills/skill_runs/approval_requests/job_queue`；Web API、`jobs`、`approvals` 和黑板快照支持分页/最近 N 条读取，避免长期运行时全表拉取。
 
 ## Docker
 

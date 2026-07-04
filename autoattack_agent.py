@@ -353,12 +353,18 @@ class Store:
             )
             self.db.commit()
 
-    def rows(self, table: str) -> list[sqlite3.Row]:
+    def rows(self, table: str, limit: int = 0, offset: int = 0, recent: bool = False) -> list[sqlite3.Row]:
         if table not in {"observations", "findings", "tasks", "command_cache", "runs", "tool_runs", "artifacts", "events", "skills", "skill_runs", "approval_requests", "job_queue"}:
             raise ValueError(table)
         order = "name" if table == "skills" else ("started_at" if table == "runs" else ("ts" if table == "command_cache" else "id"))
+        limit = max(0, int(limit or 0))
+        offset = max(0, int(offset or 0))
+        sql = f"select * from {table} order by {order} {'desc' if recent else 'asc'}"
+        if limit:
+            sql += f" limit {limit} offset {offset}"
         with self.lock:
-            return list(self.db.execute(f"select * from {table} order by {order}"))
+            rows = list(self.db.execute(sql))
+        return list(reversed(rows)) if recent else rows
 
     def get_command(self, digest: str) -> CommandResult | None:
         with self.lock:
@@ -2268,10 +2274,10 @@ def blackboard_snapshot(store: Store | None, limit: int = 30) -> dict:
     if not store:
         return {}
     observations = []
-    for row in store.rows("observations")[-limit:]:
+    for row in store.rows("observations", limit=limit, recent=True):
         observations.append({"target": row["target"], "kind": row["kind"], "source": row["source"], "data": json.loads(row["data"])})
     findings = []
-    for row in store.rows("findings")[-limit:]:
+    for row in store.rows("findings", limit=limit, recent=True):
         findings.append({"title": row["title"], "severity": row["severity"], "target": row["target"], "source": row["source"], "evidence": row["evidence"][:500]})
     return {"observations": observations, "findings": findings}
 
@@ -2499,14 +2505,14 @@ def cmd_skills(args: argparse.Namespace) -> int:
 def cmd_approvals(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace).resolve()
     store = Store(workspace / "state.sqlite3")
-    print(json.dumps([dict(r) for r in store.rows("approval_requests")], indent=2, ensure_ascii=False))
+    print(json.dumps([dict(r) for r in store.rows("approval_requests", args.limit, args.offset, args.recent)], indent=2, ensure_ascii=False))
     return 0
 
 
 def cmd_jobs(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace).resolve()
     store = Store(workspace / "state.sqlite3")
-    print(json.dumps([dict(r) for r in store.rows("job_queue")], indent=2, ensure_ascii=False))
+    print(json.dumps([dict(r) for r in store.rows("job_queue", args.limit, args.offset, args.recent)], indent=2, ensure_ascii=False))
     return 0
 
 
@@ -2521,7 +2527,7 @@ def cmd_web(args: argparse.Namespace) -> int:
         def do_GET(self) -> None:
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path.startswith("/api/"):
-                self._json(api_payload(workspace, parsed.path.removeprefix("/api/")))
+                self._json(api_payload(workspace, parsed.path.removeprefix("/api/"), parsed.query))
                 return
             self._html(render_console(workspace))
 
@@ -2587,22 +2593,32 @@ def cmd_import_har(args: argparse.Namespace) -> int:
     return 0
 
 
-def api_payload(workspace: Path, name: str) -> object:
+def _query_int(qs: dict[str, list[str]], name: str, default: int) -> int:
+    with contextlib.suppress(Exception):
+        return max(0, int((qs.get(name) or [str(default)])[0]))
+    return default
+
+
+def api_payload(workspace: Path, name: str, query: str = "") -> object:
     store = Store(workspace / "state.sqlite3")
     if name == "status":
         return status_payload(workspace)
     if name in {"findings", "tasks", "events", "job_queue", "approval_requests", "skill_runs", "tool_runs"}:
-        return [dict(r) for r in store.rows(name)][-200:]
+        qs = urllib.parse.parse_qs(query)
+        limit = _query_int(qs, "limit", 200)
+        offset = _query_int(qs, "offset", 0)
+        recent = _bool((qs.get("recent") or ["true"])[0], True)
+        return [dict(r) for r in store.rows(name, limit, offset, recent)]
     return {"error": "unknown endpoint"}
 
 
 def render_console(workspace: Path) -> str:
     status = status_payload(workspace)
     store = Store(workspace / "state.sqlite3")
-    findings = [dict(r) for r in store.rows("findings")][-20:]
-    jobs = [dict(r) for r in store.rows("job_queue")][-20:]
-    approvals = [dict(r) for r in store.rows("approval_requests")][-20:]
-    tasks = [dict(r) for r in store.rows("tasks")][-30:]
+    findings = [dict(r) for r in store.rows("findings", 20, recent=True)]
+    jobs = [dict(r) for r in store.rows("job_queue", 20, recent=True)]
+    approvals = [dict(r) for r in store.rows("approval_requests", 20, recent=True)]
+    tasks = [dict(r) for r in store.rows("tasks", 30, recent=True)]
     def esc(v: object) -> str:
         return html.escape(str(v))
     def table(rows: list[dict], cols: list[str]) -> str:
@@ -3085,6 +3101,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     jobs = sub.add_parser("jobs", help="list queued/distributed jobs")
     jobs.add_argument("workspace")
+    jobs.add_argument("--limit", type=int, default=0)
+    jobs.add_argument("--offset", type=int, default=0)
+    jobs.add_argument("--recent", action="store_true")
     jobs.set_defaults(func=cmd_jobs)
 
     web = sub.add_parser("web", help="serve a lightweight local control console")
@@ -3107,6 +3126,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     approvals = sub.add_parser("approvals", help="list pending/decided approval requests")
     approvals.add_argument("workspace")
+    approvals.add_argument("--limit", type=int, default=0)
+    approvals.add_argument("--offset", type=int, default=0)
+    approvals.add_argument("--recent", action="store_true")
     approvals.set_defaults(func=cmd_approvals)
 
     approve = sub.add_parser("approve", help="approve an approval request")

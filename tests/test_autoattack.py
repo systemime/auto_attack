@@ -98,7 +98,11 @@ class AutoAttackTests(unittest.TestCase):
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
                 list(pool.map(add, range(50)))
+            for i in range(5):
+                store.add_task("p", str(i), "t", "done")
             self.assertEqual(len(store.rows("observations")), 50)
+            self.assertEqual([r["target"] for r in store.rows("tasks", limit=2, recent=True)], ["3", "4"])
+            self.assertEqual([r["target"] for r in store.rows("tasks", limit=2, offset=1, recent=True)], ["2", "3"])
             sarif = aa._sarif([dict(r) for r in store.rows("findings")])
             self.assertEqual(sarif["version"], "2.1.0")
             self.assertEqual(sarif["runs"][0]["results"][0]["properties"]["source_skill"], "skill")
@@ -430,6 +434,7 @@ class AutoAttackTests(unittest.TestCase):
             self.assertTrue(store.rows("findings"))
             self.assertIn("AutoAttack Console", aa.render_console(tmp))
             self.assertIn("findings", aa.api_payload(tmp, "status"))
+            self.assertLessEqual(len(aa.api_payload(tmp, "findings", "limit=1")), 1)
             args = argparse.Namespace(headers=["Authorization: Bearer x"], cookie="sid=1")
             self.assertEqual(aa._http_headers_from_args(args)["Cookie"], "sid=1")
 

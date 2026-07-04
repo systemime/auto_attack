@@ -21,7 +21,7 @@
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选 metadata。 |
 | Routing explainability | `skills list --summary`、`skills explain` 与 `skills eval` 输出 candidates/plans/skipped/score/skipped_reason_counts/skillset_sha256；真实 run 写入 `skill_routing_summary` 事件。 |
-| Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引。 |
+| Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引和热点分页读取。 |
 | Queue/concurrency | local thread pool、SQLite queue、Redis queue、worker lease/retry；queue 记录 skill 名称。 |
 | Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、depends_on、conflicts。 |
 
@@ -56,7 +56,7 @@
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
 - 无二级详情加载；候选只给 metadata。
 - router 已记录 skipped reason 分布和 `skills eval` 离线路由回归；latency、选择分数的长期聚合仍不完整。
-- `skills list` 已有分页；`Store.rows()` 仍偏全表读取，长期运行的 events/findings/tasks 还需要分页 API。
+- `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
 - enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
 - SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
 
