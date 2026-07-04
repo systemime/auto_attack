@@ -328,6 +328,10 @@ class AutoAttackTests(unittest.TestCase):
                     self.assertEqual(rc, 0)
                     self.assertEqual(doctor["counts"]["total"], 1001)
                     self.assertEqual(doctor["counts"]["unavailable"], 0)
+                    rc, search = self._capture_json(["skills", "search", "skill999", "--limit", "5"])
+                    self.assertEqual(rc, 0)
+                    self.assertEqual(search["skills"][0]["name"], "skill999")
+                    self.assertIn("skill999", search["skills"][0]["score_detail"]["matched_terms"])
                 finally:
                     aa.ToolRegistry = old_registry
             finally:

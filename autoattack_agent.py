@@ -2866,6 +2866,19 @@ def cmd_skills(args: argparse.Namespace) -> int:
         payload = skill_doctor(registry)
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0 if payload["ok"] else 1
+    if args.skill_cmd == "search":
+        target = normalize_target(args.target)
+        query_terms = _terms(args.query)
+        selected = skill_selectors(args.tools)
+        rows = []
+        for skill in registry.candidates(target, args.profile, selected, None, args.limit, args.query, args.executable):
+            row = skill_candidate_payload(skill) | registry.score_detail(skill, query_terms)
+            row["available"] = registry.is_available(skill.tool) if skill.tool else True
+            if args.available and not row["available"]:
+                continue
+            rows.append(row)
+        print(json.dumps({"query": args.query, "target": target.raw, "total": len(rows), "skills": rows}, indent=2, ensure_ascii=False))
+        return 0
     if args.skill_cmd == "list":
         rows, total = filter_skill_rows(registry, args)
         if getattr(args, "summary", False):
@@ -3461,6 +3474,15 @@ def build_parser() -> argparse.ArgumentParser:
     skills_schema.set_defaults(func=cmd_skills)
     skills_doctor = skill_sub.add_parser("doctor", help="check skill registry health")
     skills_doctor.set_defaults(func=cmd_skills)
+    skills_search = skill_sub.add_parser("search", help="search skills with routing query scoring")
+    skills_search.add_argument("query")
+    skills_search.add_argument("--target", default="example.com")
+    skills_search.add_argument("--profile", choices=["quick", "standard", "deep"], default="deep")
+    skills_search.add_argument("--tools", default="", help="comma-separated skill/tool selectors, e.g. cap:web,tag:headers")
+    skills_search.add_argument("--limit", type=int, default=20)
+    skills_search.add_argument("--executable", action="store_true")
+    skills_search.add_argument("--available", action="store_true")
+    skills_search.set_defaults(func=cmd_skills)
     skills_list = skill_sub.add_parser("list", help="list local skills")
     skills_list.add_argument("--phase", choices=sorted(ALLOWED_SKILL_PHASES), default="")
     skills_list.add_argument("--risk", choices=sorted(ALLOWED_SKILL_RISKS), default="")
