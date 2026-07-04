@@ -1306,6 +1306,26 @@ def skill_stats_workspaces(path: Path, limit: int = 20, max_events: int = 1000, 
     return total
 
 
+def skill_trace(store: Store, target: str = "", skill: str = "", limit: int = 200) -> dict:
+    timeline: list[dict] = []
+    for row in store.rows("events", limit, recent=True):
+        with contextlib.suppress(Exception):
+            data = json.loads(row["data"])
+            if target and target not in str(data.get("target", "")) and target not in str(data.get("targets", "")):
+                continue
+            if skill and row["kind"] != "skill_routing_summary" and skill not in str(data.get("skill", "")) and skill not in str(data.get("selected", "")):
+                continue
+            timeline.append({"ts": row["ts"], "type": "event", "kind": row["kind"], "data": data})
+    for row in store.rows("skill_runs", limit, recent=True):
+        if target and target not in row["target"]:
+            continue
+        if skill and skill != row["skill"]:
+            continue
+        timeline.append({"ts": row["ts"], "type": "skill_run", "skill": row["skill"], "target": row["target"], "status": row["status"], "tool": row["tool"], "command_digest": row["command_digest"], "reason": row["reason"]})
+    timeline.sort(key=lambda x: x["ts"])
+    return {"target": target, "skill": skill, "events": timeline[-max(0, int(limit or 0)):] if limit else timeline}
+
+
 def _dependency_cycle(graph: dict[str, Sequence[str]]) -> list[str]:
     visiting: list[str] = []
     visited: set[str] = set()
@@ -2730,6 +2750,10 @@ def cmd_skills(args: argparse.Namespace) -> int:
     if args.skill_cmd == "stats":
         print(json.dumps(skill_stats_workspaces(Path(args.workspace).resolve(), args.limit, args.max_events, args.recursive), indent=2, ensure_ascii=False))
         return 0
+    if args.skill_cmd == "trace":
+        store = Store(Path(args.workspace).resolve() / "state.sqlite3")
+        print(json.dumps(skill_trace(store, args.target, args.skill, args.limit), indent=2, ensure_ascii=False))
+        return 0
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
     if args.skill_cmd == "list":
         rows, total = filter_skill_rows(registry, args)
@@ -3366,6 +3390,12 @@ def build_parser() -> argparse.ArgumentParser:
     skills_stats.add_argument("--max-events", type=int, default=1000)
     skills_stats.add_argument("--recursive", action="store_true", help="aggregate nested workspaces under a runs directory")
     skills_stats.set_defaults(func=cmd_skills)
+    skills_trace = skill_sub.add_parser("trace", help="show skill routing/execution timeline for a workspace")
+    skills_trace.add_argument("workspace")
+    skills_trace.add_argument("--target", default="")
+    skills_trace.add_argument("--skill", default="")
+    skills_trace.add_argument("--limit", type=int, default=200)
+    skills_trace.set_defaults(func=cmd_skills)
     for name in ("enable", "disable"):
         p = skill_sub.add_parser(name, help=f"{name} a local skill")
         p.add_argument("name")

@@ -633,6 +633,10 @@ class AutoAttackTests(unittest.TestCase):
                 self.assertEqual(stats["skill_runs"]["total"], 2)
                 self.assertEqual(stats["routing"]["planned"], 2)
                 self.assertEqual(stats["routing"]["skipped_reason_counts"]["conflict"], 2)
+                rc, trace = self._capture_json(["skills", "trace", str(runs / "r1"), "--skill", "dummy.high"])
+                self.assertEqual(rc, 0)
+                self.assertTrue(any(x["type"] == "skill_run" and x["skill"] == "dummy.high" for x in trace["events"]))
+                self.assertTrue(any(x["type"] == "event" and x["kind"] == "skill_routing_summary" for x in trace["events"]))
             finally:
                 aa.ToolRegistry = old_registry
 

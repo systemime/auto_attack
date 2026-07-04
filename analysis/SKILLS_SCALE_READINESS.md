@@ -20,7 +20,7 @@
 | Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term、conflicts 过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选摘要和 contract digest。 |
-| Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats` 覆盖候选、计划、跳过原因、回归门禁、执行耗时和跨 workspace 聚合统计；真实 run 写入 `skill_routing_summary` 事件。 |
+| Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats`、`skills trace` 覆盖候选、计划、跳过原因、回归门禁、执行耗时、跨 workspace 聚合统计和单目标/skill 时间线；真实 run 写入 `skill_routing_summary` 事件。 |
 | Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引和热点分页读取。 |
 | Queue/concurrency | local thread pool、SQLite queue、Redis queue、worker lease/retry；queue 记录 skill 名称。 |
 | Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、depends_on、conflicts。 |
@@ -33,7 +33,7 @@
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
 6. **路由**：`SkillRouter` 只计划可执行 skill，处理 depends_on/dependency_versions、intrusive approval 和 conflicts。
-7. **解释/评估**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，`skills eval` 做路由回归，`skills stats` 聚合单 workspace 或 runs 目录下的 skill_runs/routing events。
+7. **解释/评估**：`skills list --summary` 展示分页与分布，`skills explain` 展示候选、计划、跳过原因、冲突和分数，`skills eval` 做路由回归，`skills stats` 聚合单 workspace 或 runs 目录下的 skill_runs/routing events，`skills trace` 输出目标/skill 时间线。
 8. **执行与审计**：执行结果写入 tasks、skill_runs、tool_runs、events、findings、artifacts；queue 模式保留 skill 名称。
 
 ## 对照主流生产机制
@@ -46,7 +46,7 @@
 | Dynamic filtering/routing | policy/profile/target/query/metadata selectors/depends_on/dependency_versions/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
-| Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` + `skills eval` + `skills stats` + `skill_routing_summary` events | 部分达标；无 trace UI |
+| Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` + `skills eval` + `skills stats` + `skills trace` + `skill_routing_summary` events | 基础达标；无图形化 trace UI |
 | Version/dependency management | manifest schema_version、schema v0 迁移、agent version range、depends_on 版本约束、Docker 工具版本固定 | 基础达标 |
 | Queue/concurrency/durable execution | Redis/SQLite queue、lease、worker | 基础达标 |
 
@@ -54,7 +54,7 @@
 
 - 已有 `depends_on` 存在性/可用性/版本约束、agent 版本范围校验和 schema v0/legacy alias 迁移；未来新增 schema v2 时还需要继续补对应迁移。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
-- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归与 `skills stats` 跨 workspace 聚合；长期趋势图表仍未内置。
+- router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归、`skills stats` 跨 workspace 聚合与 `skills trace` 时间线；长期趋势图表仍未内置。
 - `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
 - enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
 - SQLite 单条 commit 模式适合内测和中小规模，高吞吐场景需要批量写入/更强队列与存储调优。
