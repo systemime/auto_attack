@@ -59,6 +59,8 @@ DEFAULT_POLICY = {
     },
     "approval": {"intrusive": False},
 }
+AGENT_VERSION = "1.0.0"
+SKILL_SCHEMA_VERSION = 1
 
 
 @dataclasses.dataclass(frozen=True)
@@ -145,6 +147,9 @@ class SkillSpec:
     needs_url: bool = False
     conflicts: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
+    schema_version: int = SKILL_SCHEMA_VERSION
+    min_agent_version: str = ""
+    max_agent_version: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -232,7 +237,8 @@ class Store:
             create table if not exists skills(
               name text primary key, version text, phase text, risk text, enabled integer,
               requires_approval integer, description text, tool text, source text, tags text,
-              capabilities text, priority integer, needs_url integer, conflicts text, depends_on text
+              capabilities text, priority integer, needs_url integer, conflicts text, depends_on text,
+              schema_version integer, min_agent_version text, max_agent_version text
             );
             create table if not exists skill_runs(
               id integer primary key, ts text, skill text, target text, status text,
@@ -278,6 +284,9 @@ class Store:
             "needs_url": "integer",
             "conflicts": "text",
             "depends_on": "text",
+            "schema_version": "integer",
+            "min_agent_version": "text",
+            "max_agent_version": "text",
         }.items():
             self.ensure_column("skills", col, typ)
         self.ensure_column("job_queue", "skill", "text")
@@ -410,8 +419,8 @@ class Store:
     def upsert_skill(self, skill: SkillSpec) -> None:
         with self.lock:
             self.db.execute(
-                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on)
-                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on,schema_version,min_agent_version,max_agent_version)
+                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     skill.name,
                     skill.version,
@@ -428,6 +437,9 @@ class Store:
                     int(skill.needs_url),
                     json.dumps(skill.conflicts, ensure_ascii=False),
                     json.dumps(skill.depends_on, ensure_ascii=False),
+                    int(skill.schema_version),
+                    skill.min_agent_version,
+                    skill.max_agent_version,
                 ),
             )
             self.db.commit()
@@ -740,6 +752,24 @@ def _bool(value: object, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _version_tuple(value: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", value or "0")[:3]) or (0,)
+
+
+def _check_skill_compat(data: dict, name: str) -> tuple[int, str, str]:
+    schema_version = int(data.get("schema_version", SKILL_SCHEMA_VERSION))
+    if schema_version != SKILL_SCHEMA_VERSION:
+        raise ValueError(f"unsupported schema_version for {name}: {schema_version}")
+    min_agent = str(data.get("min_agent_version") or "").strip()
+    max_agent = str(data.get("max_agent_version") or "").strip()
+    current = _version_tuple(AGENT_VERSION)
+    if min_agent and current < _version_tuple(min_agent):
+        raise ValueError(f"agent version too old for {name}: need >= {min_agent}")
+    if max_agent and current > _version_tuple(max_agent):
+        raise ValueError(f"agent version too new for {name}: need <= {max_agent}")
+    return schema_version, min_agent, max_agent
+
+
 def normalize_skill_manifest(data: dict, source: str = "") -> dict:
     if not isinstance(data, dict):
         raise ValueError("skill manifest must be a JSON object")
@@ -749,6 +779,7 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
     description = str(data.get("description", "")).strip()
     if not description:
         raise ValueError(f"missing description for {name}")
+    schema_version, min_agent, max_agent = _check_skill_compat(data, name)
     phase = str(data.get("phase") or "scan").strip().lower()
     risk = str(data.get("risk") or "safe").strip().lower()
     if phase not in ALLOWED_SKILL_PHASES:
@@ -768,6 +799,9 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
         raise ValueError(f"skill cannot depend on itself: {name}")
     return {
         "name": name,
+        "schema_version": schema_version,
+        "min_agent_version": min_agent,
+        "max_agent_version": max_agent,
         "version": str(data.get("version") or "1").strip()[:80],
         "phase": phase,
         "risk": risk,
@@ -788,6 +822,9 @@ def skill_to_manifest(skill: SkillSpec) -> dict:
     return {
         "name": skill.name,
         "version": skill.version,
+        "schema_version": skill.schema_version,
+        "min_agent_version": skill.min_agent_version,
+        "max_agent_version": skill.max_agent_version,
         "phase": skill.phase,
         "risk": skill.risk,
         "requires_approval": skill.requires_approval,
@@ -808,6 +845,7 @@ def skill_to_manifest(skill: SkillSpec) -> dict:
 def skill_candidate_payload(skill: SkillSpec) -> dict:
     return {
         "name": skill.name,
+        "schema_version": skill.schema_version,
         "phase": skill.phase,
         "risk": skill.risk,
         "needs_url": skill.needs_url,
@@ -1049,6 +1087,7 @@ class SkillRegistry:
                 spec["description"], tool, spec["name"] not in self.disabled and bool(spec.get("enabled", True)),
                 str(path), tuple(spec.get("tags", [])), tuple(spec.get("capabilities", [])), int(spec.get("priority", 50)),
                 bool(spec.get("needs_url", False) or (tool and tool.needs_url)), tuple(spec.get("conflicts", [])), tuple(spec.get("depends_on", [])),
+                int(spec.get("schema_version", SKILL_SCHEMA_VERSION)), str(spec.get("min_agent_version", "")), str(spec.get("max_agent_version", "")),
             ))
         return out
 
@@ -2121,6 +2160,8 @@ def build_manifest(run_id: str, started_at: str, status: str, workspace: Path, t
         "targets": [t.raw for t in targets],
         "policy_sha256": policy.sha256,
         "tool_versions": tool_versions or {},
+        "agent_version": AGENT_VERSION,
+        "skill_schema_version": SKILL_SCHEMA_VERSION,
         "counts": counts or {},
         "workspace": str(workspace),
         "effective_args": {

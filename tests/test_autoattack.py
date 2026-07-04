@@ -117,6 +117,8 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(manifest["status"], "completed")
             self.assertIn("policy_sha256", manifest)
             self.assertEqual(len(manifest["effective_args"].get("skillset_sha256", "")), 64)
+            self.assertEqual(manifest["agent_version"], aa.AGENT_VERSION)
+            self.assertEqual(manifest["skill_schema_version"], aa.SKILL_SCHEMA_VERSION)
             self.assertEqual(aa.main(["status", str(workspace)]), 0)
             self.assertEqual(aa.main(["report", str(workspace), "--format", "md,json,sarif"]), 0)
             self.assertEqual(aa.main(["resume", str(workspace), "--retry-failed", "1"]), 0)
@@ -434,6 +436,8 @@ class AutoAttackTests(unittest.TestCase):
             manifest = skills_dir / "web_headers.json"
             manifest.write_text(json.dumps({
                 "name": "web.headers",
+                "schema_version": 1,
+                "min_agent_version": "1.0.0",
                 "version": "1.2",
                 "description": "Check HTTP response headers",
                 "phase": "fingerprint",
@@ -445,6 +449,8 @@ class AutoAttackTests(unittest.TestCase):
                 "depends_on": "python-recon",
             }))
             normalized = aa.normalize_skill_manifest(json.loads(manifest.read_text()), source=str(manifest))
+            self.assertEqual(normalized["schema_version"], 1)
+            self.assertEqual(normalized["min_agent_version"], "1.0.0")
             self.assertEqual(normalized["depends_on"], ["python-recon"])
             self.assertEqual(normalized["tags"], ["web", "headers"])
             self.assertEqual(normalized["capabilities"], ["http", "headers"])
@@ -458,6 +464,7 @@ class AutoAttackTests(unittest.TestCase):
             self.assertIn("web.headers", by_name)
             self.assertEqual(by_name["web.headers"]["source"], str(manifest))
             self.assertEqual(by_name["web.headers"]["priority"], 88)
+            self.assertEqual(by_name["web.headers"]["schema_version"], 1)
             rc, page = self._capture_json(["skills", "--skills-dir", str(skills_dir), "list", "--source", "manifest", "--query", "headers", "--limit", "1", "--summary"])
             self.assertEqual(rc, 0)
             self.assertEqual(page["total"], 1)
@@ -467,6 +474,11 @@ class AutoAttackTests(unittest.TestCase):
             bad_dir = root / "bad"
             bad_dir.mkdir()
             (bad_dir / "bad.json").write_text(json.dumps({"name": "bad.dep", "description": "bad", "depends_on": ["missing.skill"]}))
+            bad_schema = root / "bad_schema.json"
+            bad_schema.write_text(json.dumps({"name": "bad.schema", "description": "bad", "schema_version": 999}))
+            rc, rows = self._capture_json(["skills", "validate", str(bad_schema)])
+            self.assertEqual(rc, 1)
+            self.assertIn("unsupported schema_version", rows[0]["error"])
             rc, rows = self._capture_json(["skills", "validate", str(bad_dir)])
             self.assertEqual(rc, 1)
             self.assertIn("missing dependencies", rows[0]["error"])

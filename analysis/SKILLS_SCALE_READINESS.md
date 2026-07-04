@@ -13,7 +13,7 @@
 | 维度 | 当前状态 |
 |---|---|
 | Registry | `python-recon` + `ToolRegistry.tools` + JSON manifest skills，by-name 缓存和 duplicate 检测。 |
-| Manifest | `skills normalize/validate`，字段规范化：name/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts。 |
+| Manifest | `skills normalize/validate`，字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts。 |
 | Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态持久化到 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/depends_on/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
@@ -28,7 +28,7 @@
 ## 大量 skills 当前处理方式
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
-2. **规范化**：manifest 统一校验 name、phase、risk、priority、tags、capabilities、depends_on、conflicts、needs_url 等字段。
+2. **规范化**：manifest 统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、depends_on、conflicts、needs_url 等字段。
 3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase`，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤。
 5. **排序**：按 priority + query term 命中分排序，AI planner 默认最多拿 30 个可执行候选。
@@ -40,19 +40,19 @@
 
 | 主流机制 | 当前状态 | 评价 |
 |---|---|---|
-| Registry + metadata | name/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/depends_on/conflicts | 基础达标 |
+| Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/depends_on/conflicts | 基础达标 |
 | Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata | 部分达标；无二级详情加载 |
 | Capability schema | `ToolSpec` 有 build/parse/needs_url，manifest 有 capabilities | 部分达标；无 JSON Schema/OpenAPI/MCP schema |
 | Dynamic filtering/routing | policy/profile/target/query/depends_on/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
 | Policy/permissions/approval | scope/policy/intrusive approval | 基础达标 |
 | Observability/tracing/eval | events/tool_runs/skill_runs/report + `skills explain` | 部分达标；无选择评估集/trace UI |
-| Version/dependency management | manifest version、轻量 depends_on、Docker 工具版本固定 | 部分达标；无版本范围/schema migration |
+| Version/dependency management | manifest schema_version、agent version range、轻量 depends_on、Docker 工具版本固定 | 部分达标；无 schema migration |
 | Queue/concurrency/durable execution | Redis/SQLite queue、lease、worker | 基础达标 |
 
 ## 仍然存在的差距
 
-- 已有轻量 `depends_on` 存在性/可用性约束；仍缺版本范围、schema migration。
+- 已有轻量 `depends_on` 存在性/可用性约束和 agent 版本范围校验；仍缺 schema migration。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
 - 无二级详情加载；候选只给 metadata。
 - router 对 skipped reason、latency、选择分数的长期统计仍不完整。
