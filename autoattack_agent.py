@@ -2569,7 +2569,10 @@ def cmd_skills(args: argparse.Namespace) -> int:
         manifests: dict[str, dict] = {}
         for path in sorted(Path(args.path).rglob("*.json") if Path(args.path).is_dir() else [Path(args.path)]):
             try:
-                manifest = normalize_skill_manifest(json.loads(path.read_text(encoding="utf-8")), source=str(path))
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                manifest = normalize_skill_manifest(raw, source=str(path))
+                if getattr(args, "strict", False) and raw != manifest:
+                    raise ValueError("manifest is not normalized; run: skills normalize --write")
                 duplicate = seen.get(manifest["name"])
                 if duplicate:
                     raise ValueError(f"duplicate skill name {manifest['name']} also in {duplicate}")
@@ -3224,6 +3227,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_norm.set_defaults(func=cmd_skills)
     skills_validate = skill_sub.add_parser("validate", help="validate a JSON skill manifest or directory")
     skills_validate.add_argument("path")
+    skills_validate.add_argument("--strict", action="store_true", help="fail if file content is not already normalized")
     skills_validate.set_defaults(func=cmd_skills)
     skills_explain = skill_sub.add_parser("explain", help="explain skill routing for one target")
     skills_explain.add_argument("target")
