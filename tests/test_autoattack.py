@@ -88,6 +88,9 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(counter.read_text(), "1")
             self.assertEqual(len(agent.store.rows("command_cache")), 1)
             self.assertTrue(any(r["status"] == "cached" for r in agent.store.rows("tool_runs")))
+            stats = aa.skill_stats(agent.store)
+            self.assertGreaterEqual(stats["runtime"]["count"], 1)
+            self.assertTrue(any(x["skill"] == "dummy" and "runtime" in x for x in stats["skill_runs"]["top_skills"]))
 
     def test_threaded_sqlite_and_sarif(self):
         with tempfile.TemporaryDirectory() as tmp:

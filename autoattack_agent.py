@@ -1067,6 +1067,12 @@ def eval_skill_routing(skills: SkillRegistry, path: Path, policy: Policy | None 
 def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
     with store.lock:
         skill_rows = store.db.execute("select skill,status,count(*) c from skill_runs group by skill,status").fetchall()
+        runtime_rows = store.db.execute(
+            """select sr.skill skill, count(*) c, sum(tr.seconds) total, avg(tr.seconds) avg, max(tr.seconds) max
+               from skill_runs sr join tool_runs tr on sr.command_digest=tr.digest
+               where tr.seconds is not null and sr.status in ('done','failed','error','cached')
+               group by sr.skill"""
+        ).fetchall()
         routing_rows = store.db.execute("select data from events where kind='skill_routing_summary' order by id desc limit ?", (max(0, int(max_events or 0)) or 1000,)).fetchall()
     by_skill: dict[str, dict] = {}
     status_totals: dict[str, int] = {}
@@ -1078,6 +1084,19 @@ def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
         item["total"] += count
         item["status"][status] = count
         status_totals[status] = status_totals.get(status, 0) + count
+    runtime = {"count": 0, "seconds_total": 0.0, "seconds_avg": 0.0, "seconds_max": 0.0}
+    for row in runtime_rows:
+        skill = row["skill"] or ""
+        count = int(row["c"] or 0)
+        total = float(row["total"] or 0.0)
+        item = by_skill.setdefault(skill, {"skill": skill, "total": 0, "status": {}})
+        item["runtime"] = {"count": count, "seconds_total": round(total, 3), "seconds_avg": round(float(row["avg"] or 0.0), 3), "seconds_max": round(float(row["max"] or 0.0), 3)}
+        runtime["count"] += count
+        runtime["seconds_total"] += total
+        runtime["seconds_max"] = max(runtime["seconds_max"], float(row["max"] or 0.0))
+    if runtime["count"]:
+        runtime["seconds_avg"] = runtime["seconds_total"] / runtime["count"]
+    runtime = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in runtime.items()}
     plan_status: dict[str, int] = {}
     skipped_reason_counts: dict[str, int] = {}
     routed_targets = planned = candidates = 0
@@ -1095,6 +1114,7 @@ def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
     limit = max(0, int(limit or 0))
     return {
         "skill_runs": {"total": sum(status_totals.values()), "by_status": dict(sorted(status_totals.items())), "top_skills": top[:limit] if limit else top},
+        "runtime": runtime,
         "routing": {
             "events": routed_targets,
             "candidates": candidates,
