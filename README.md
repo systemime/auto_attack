@@ -150,6 +150,7 @@ python3 autoattack_agent.py skills enable nuclei
 python3 autoattack_agent.py skills --skills-dir skills validate skills
 python3 autoattack_agent.py skills normalize skills/web_headers.json
 python3 autoattack_agent.py skills --skills-dir skills explain https://example.com --profile deep --query "headers scan" --tools cap:http
+python3 autoattack_agent.py skills --skills-dir skills eval skills-routing-eval.json
 ```
 
 外部 skill 用 JSON manifest 维护；可放到任意目录，运行时通过 `--skills-dir` 或 `AUTOATTACK_SKILLS_DIR` 加载：
@@ -173,7 +174,7 @@ python3 autoattack_agent.py skills --skills-dir skills explain https://example.c
 }
 ```
 
-Manifest 字段会被规范化和校验：`name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts`；未填写 `tags/capabilities` 时会从 `phase/tool/name` 自动补齐基础路由元数据。`tool` 绑定已有外部工具时可执行；没有 `tool` 的 manifest 只进入 catalog，不会进入执行计划。Router 会按 profile、policy、目标类型、工具可用性、depends_on、priority、query term 和 conflicts 选择候选；`--tools` 支持精确 skill/tool 名，也支持 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 元数据选择器，便于从大量 skills 中先收窄候选面。AI planner 只收到 Top-K 可执行候选。`skills list` 支持 phase/risk/source/state/tag/capability/query/limit/offset/sort 过滤分页；`skills explain` 输出 candidates、plans、skipped、score 和 `skillset_sha256`，用于审计海量 skills 场景下为什么选中或跳过。
+Manifest 字段会被规范化和校验：`name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts`；未填写 `tags/capabilities` 时会从 `phase/tool/name` 自动补齐基础路由元数据。`tool` 绑定已有外部工具时可执行；没有 `tool` 的 manifest 只进入 catalog，不会进入执行计划。Router 会按 profile、policy、目标类型、工具可用性、depends_on、priority、query term 和 conflicts 选择候选；`--tools` 支持精确 skill/tool 名，也支持 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 元数据选择器，便于从大量 skills 中先收窄候选面。AI planner 只收到 Top-K 可执行候选。`skills list` 支持 phase/risk/source/state/tag/capability/query/limit/offset/sort 过滤分页；`skills explain` 输出 candidates、plans、skipped、score 和 `skillset_sha256`，用于审计海量 skills 场景下为什么选中或跳过；`skills eval` 可用 JSON cases 固化路由期望，作为大量 skills 变更后的回归门禁。
 
 运行时加载：
 

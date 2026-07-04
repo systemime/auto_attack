@@ -532,6 +532,12 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(explained["plans"][0]["depends_on"], ["dummy.base"])
             self.assertTrue(any(x["skill"] == "dummy.low" and x["reason"] == "conflict" for x in explained["skipped"]))
             self.assertTrue(any(x["skill"] == "dummy.blocked" and "missing dependency" in x["reason"] for x in explained["skipped"]))
+            eval_file = root / "eval.json"
+            eval_file.write_text(json.dumps({"cases": [
+                {"name": "web route", "target": "example.com", "profile": "deep", "query": "web scan", "tools": ["cap:web"], "expect_plans": ["dummy.high"], "reject_plans": ["dummy.low"]},
+                {"name": "catalog candidate", "target": "example.com", "profile": "deep", "expect_candidates": ["dummy.high"], "reject_candidates": ["dummy.blocked"]},
+            ]}))
+            self.assertTrue(aa.eval_skill_routing(skills, eval_file)["ok"])
             old_registry = aa.ToolRegistry
             class FakeRegistry:
                 def __init__(self):
@@ -545,6 +551,9 @@ class AutoAttackTests(unittest.TestCase):
                 rc, explained_cli = self._capture_json(["skills", "--skills-dir", str(skills_dir), "explain", "example.com", "--profile", "deep", "--query", "web scan", "--tools", "cap:web"])
                 self.assertEqual(rc, 0)
                 self.assertEqual(explained_cli["plans"][0]["skill"], "dummy.high")
+                rc, eval_result = self._capture_json(["skills", "--skills-dir", str(skills_dir), "eval", str(eval_file)])
+                self.assertEqual(rc, 0)
+                self.assertEqual(eval_result["passed"], 2)
             finally:
                 aa.ToolRegistry = old_registry
 

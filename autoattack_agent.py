@@ -863,8 +863,9 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
     }
 
 
-def skill_selectors(value: str) -> set[str] | None:
-    selected = {x.strip() for x in str(value or "").split(",") if x.strip()}
+def skill_selectors(value: object) -> set[str] | None:
+    items = value if isinstance(value, Sequence) and not isinstance(value, str) else str(value or "").split(",")
+    selected = {str(x).strip() for x in items if str(x).strip()}
     return selected or None
 
 
@@ -978,6 +979,60 @@ def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, a
             "depends_on": list(plan.skill.depends_on),
         } for plan in plans],
         "skipped": skipped,
+    }
+
+
+def eval_skill_routing(skills: SkillRegistry, path: Path, policy: Policy | None = None, fail_under: float = 100.0) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    cases = data.get("cases", data) if isinstance(data, dict) else data
+    if not isinstance(cases, list):
+        raise ValueError("eval file must be a JSON list or {\"cases\": [...]}")
+    results = []
+    for i, case in enumerate(cases, 1):
+        if not isinstance(case, dict):
+            raise ValueError(f"case {i} must be an object")
+        target = normalize_target(str(case["target"]))
+        explained = explain_skill_routing(
+            skills,
+            target,
+            str(case.get("profile", "standard")),
+            _bool(case.get("approve_intrusive"), False),
+            skill_selectors(case.get("tools", "")),
+            policy,
+            int(case.get("limit", 30)),
+            str(case.get("query", "")),
+            0,
+        )
+        planned = {x["skill"] for x in explained["plans"]}
+        candidates = {x["name"] for x in explained["candidates"]}
+        expect_plans = set(_list_names(case.get("expect_plans", case.get("expect", []))))
+        reject_plans = set(_list_names(case.get("reject_plans", case.get("reject", []))))
+        expect_candidates = set(_list_names(case.get("expect_candidates", [])))
+        reject_candidates = set(_list_names(case.get("reject_candidates", [])))
+        row = {
+            "name": str(case.get("name") or f"case-{i}"),
+            "ok": True,
+            "missing_plans": sorted(expect_plans - planned),
+            "unexpected_plans": sorted(reject_plans & planned),
+            "missing_candidates": sorted(expect_candidates - candidates),
+            "unexpected_candidates": sorted(reject_candidates & candidates),
+            "planned": sorted(planned),
+            "candidates": sorted(candidates),
+        }
+        row["ok"] = not (row["missing_plans"] or row["unexpected_plans"] or row["missing_candidates"] or row["unexpected_candidates"])
+        results.append(row)
+    passed = sum(1 for x in results if x["ok"])
+    total = len(results)
+    pass_rate = (passed / total * 100.0) if total else 100.0
+    return {
+        "ok": pass_rate >= fail_under,
+        "total": total,
+        "passed": passed,
+        "failed": total - passed,
+        "pass_rate": round(pass_rate, 2),
+        "fail_under": fail_under,
+        "skillset_sha256": skills.skillset_digest,
+        "cases": results,
     }
 
 
@@ -2392,6 +2447,11 @@ def cmd_skills(args: argparse.Namespace) -> int:
         allow_intrusive = bool(getattr(args, "approve_intrusive", False) and (not policy or policy.intrusive_approved))
         print(json.dumps(explain_skill_routing(registry, target, args.profile, allow_intrusive, selected, policy, args.limit, args.query, args.include_skipped), indent=2, ensure_ascii=False))
         return 0
+    if args.skill_cmd == "eval":
+        policy = load_policy(args.policy) if getattr(args, "policy", "") else None
+        result = eval_skill_routing(registry, Path(args.path), policy, args.fail_under)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["ok"] else 1
     if args.skill_cmd in {"enable", "disable"}:
         ok = registry.enable(args.name, args.skill_cmd == "enable")
         print(json.dumps({"name": args.name, "enabled": args.skill_cmd == "enable", "ok": ok}, indent=2))
@@ -2953,6 +3013,11 @@ def build_parser() -> argparse.ArgumentParser:
     skills_explain.add_argument("--include-skipped", type=int, default=20)
     skills_explain.add_argument("--approve-intrusive", action="store_true")
     skills_explain.set_defaults(func=cmd_skills)
+    skills_eval = skill_sub.add_parser("eval", help="evaluate skill routing against JSON cases")
+    skills_eval.add_argument("path")
+    skills_eval.add_argument("--policy", default="", help="policy JSON path")
+    skills_eval.add_argument("--fail-under", type=float, default=100.0)
+    skills_eval.set_defaults(func=cmd_skills)
     for name in ("enable", "disable"):
         p = skill_sub.add_parser(name, help=f"{name} a local skill")
         p.add_argument("name")
