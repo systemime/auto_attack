@@ -8,3 +8,7 @@ repos/*
 !repos/repos.tsv
 .DS_Store
 docker-assets/*.zip
+.gitnexus/
+.claude/
+AGENTS.md
+CLAUDE.md

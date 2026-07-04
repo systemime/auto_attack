@@ -138,6 +138,8 @@ python3 autoattack_agent.py web runs/local --host 127.0.0.1 --port 8765
 
 ## Skills / approval / AI planner
 
+大量 skills 处理机制的生产级评估见 [`analysis/SKILLS_SCALE_READINESS.md`](analysis/SKILLS_SCALE_READINESS.md)。
+
 ```bash
 python3 autoattack_agent.py skills list
 python3 autoattack_agent.py skills test python-recon

@@ -240,6 +240,10 @@ class Store:
               attempts integer default 0, max_attempts integer default 1,
               lease_owner text, lease_until real default 0, result_digest text, detail text
             );
+            create index if not exists idx_approval_skill_target_id on approval_requests(skill,target,id);
+            create index if not exists idx_skill_runs_skill_status on skill_runs(skill,status);
+            create index if not exists idx_events_kind_id on events(kind,id);
+            create index if not exists idx_job_queue_claim on job_queue(status,attempts,lease_until);
             """
         )
         self.db.execute("pragma busy_timeout=5000")
@@ -651,9 +655,23 @@ class Scope:
 class ToolRegistry:
     def __init__(self):
         self.tools = _default_tools()
+        self._availability_cache: dict[tuple[str, str], bool] = {}
+        self._version_cache: dict[tuple[str, str], dict] = {}
+
+    def is_available(self, tool: ToolSpec) -> bool:
+        key = (tool.name, tool.binary)
+        if key not in self._availability_cache:
+            self._availability_cache[key] = tool_available(tool)
+        return self._availability_cache[key]
+
+    def version(self, tool: ToolSpec) -> dict:
+        key = (tool.name, tool.binary)
+        if key not in self._version_cache:
+            self._version_cache[key] = tool_version(tool)
+        return self._version_cache[key]
 
     def available(self) -> list[ToolSpec]:
-        return [t for t in self.tools if tool_available(t)]
+        return [t for t in self.tools if self.is_available(t)]
 
     def plan(self, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None) -> list[ToolSpec]:
         tools = self.available()
@@ -679,6 +697,7 @@ class SkillRegistry:
         self.tool_registry = tool_registry or ToolRegistry()
         self.config_path = config_path or Path(os.getenv("AUTOATTACK_SKILLS_CONFIG", ".autoattack_skills.json"))
         self.disabled = self._load_disabled()
+        self._refresh()
 
     def _load_disabled(self) -> set[str]:
         with contextlib.suppress(Exception):
@@ -689,17 +708,32 @@ class SkillRegistry:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(json.dumps({"disabled": sorted(self.disabled)}, indent=2) + "\n")
 
-    def all(self) -> list[SkillSpec]:
+    def _refresh(self) -> None:
         skills = [
             SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", None, "python-recon" not in self.disabled)
         ]
         for tool in self.tool_registry.tools:
             risk = "intrusive" if tool.intrusive else "safe"
             skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled))
-        return skills
+        by_name: dict[str, SkillSpec] = {}
+        duplicates: list[str] = []
+        for skill in skills:
+            if skill.name in by_name:
+                duplicates.append(skill.name)
+            by_name[skill.name] = skill
+        if duplicates:
+            raise ValueError("duplicate skill names: " + ", ".join(sorted(set(duplicates))))
+        self._skills = skills
+        self._by_name = by_name
+
+    def all(self) -> list[SkillSpec]:
+        return list(self._skills)
+
+    def is_available(self, tool: ToolSpec) -> bool:
+        return getattr(self.tool_registry, "is_available", tool_available)(tool)
 
     def get(self, name: str) -> SkillSpec | None:
-        return next((s for s in self.all() if s.name == name), None)
+        return self._by_name.get(name)
 
     def enable(self, name: str, enabled: bool) -> bool:
         if not self.get(name):
@@ -709,6 +743,7 @@ class SkillRegistry:
         else:
             self.disabled.add(name)
         self._save()
+        self._refresh()
         return True
 
     def test(self, name: str) -> dict:
@@ -718,7 +753,7 @@ class SkillRegistry:
         build_ok = parse_ok = True
         available = True
         if skill.tool:
-            available = tool_available(skill.tool)
+            available = self.is_available(skill.tool)
             sample = normalize_target("https://example.com/?id=1") if skill.tool.needs_url else normalize_target("example.com")
             build_ok = skill.tool.build(sample, Path(".")) is not None
             parse_ok = isinstance(skill.tool.parse(CommandResult(skill.tool.name, sample.raw, [], 0, "", "", 0, "")), tuple)
@@ -748,12 +783,12 @@ class SkillRouter:
             if reason:
                 continue
             intrusive = tool.intrusive or bool(policy and tool.name in policy.intrusive_tools)
+            plan_skill = dataclasses.replace(skill, risk="intrusive", requires_approval=True) if intrusive and skill.risk != "intrusive" else skill
             status = "ready"
             if intrusive and not allow_intrusive:
-                approved = self.store.approval_status(skill.name, target.raw) == "approved" if self.store else False
-                denied = self.store.approval_status(skill.name, target.raw) == "denied" if self.store else False
-                status = "ready" if approved else ("denied" if denied else "approval_required")
-            plans.append(SkillPlan(skill, target, status, f"{skill.phase}:{profile}", 90 if status == "ready" else 10))
+                decision = self.store.approval_status(skill.name, target.raw) if self.store else ""
+                status = "ready" if decision == "approved" else ("denied" if decision == "denied" else "approval_required")
+            plans.append(SkillPlan(plan_skill, target, status, f"{plan_skill.phase}:{profile}", 90 if status == "ready" else 10))
         return plans
 
     def _skip_reason(self, skill: SkillSpec, target: Target, profile: str, selected: set[str] | None, policy: Policy | None) -> str:
@@ -762,7 +797,7 @@ class SkillRouter:
             return "disabled"
         if selected and skill.name not in selected and (not tool or tool.name not in selected):
             return "not selected"
-        if not tool or not tool_available(tool):
+        if not tool or not self.skills.is_available(tool):
             return "unavailable"
         if policy and policy.allow_tools and tool.name not in policy.allow_tools:
             return "not allowed by policy"
@@ -1252,7 +1287,8 @@ def tool_version(tool: ToolSpec) -> dict:
 
 def collect_tool_versions(registry: ToolRegistry | None = None) -> dict:
     registry = registry or ToolRegistry()
-    return {tool.name: tool_version(tool) for tool in registry.tools}
+    version_fn = getattr(registry, "version", tool_version)
+    return {tool.name: version_fn(tool) for tool in registry.tools}
 
 
 def _default_tools() -> list[ToolSpec]:
@@ -1559,6 +1595,44 @@ def _refs_from_db(value: object) -> list[str]:
     return [str(value)]
 
 
+def ai_skill_candidates(targets: Sequence[Target], skills: SkillRegistry, args: argparse.Namespace, policy: Policy | None, limit: int = 30) -> list[dict]:
+    selected = set(filter(None, str(getattr(args, "tools", "") or "").split(","))) or None
+    profile = getattr(args, "profile", "standard")
+    out: list[dict] = []
+    seen: set[str] = set()
+    for target in targets:
+        for skill in skills.all():
+            tool = skill.tool
+            if not tool or skill.name in seen:
+                continue
+            if not skill.enabled:
+                continue
+            if selected and skill.name not in selected and tool.name not in selected:
+                continue
+            if policy and policy.allow_tools and tool.name not in policy.allow_tools:
+                continue
+            if profile == "quick" and tool.phase not in {"recon", "fingerprint"}:
+                continue
+            if profile != "deep" and tool.phase == "bruteforce":
+                continue
+            if tool.needs_url and not target.is_url:
+                continue
+            if not skills.is_available(tool):
+                continue
+            intrusive = tool.intrusive or bool(policy and tool.name in policy.intrusive_tools)
+            out.append({
+                "name": skill.name,
+                "phase": skill.phase,
+                "risk": "intrusive" if intrusive else "safe",
+                "needs_url": tool.needs_url,
+                "description": skill.description[:300],
+            })
+            seen.add(skill.name)
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def ai_plan_tasks(targets: Sequence[Target], skills: SkillRegistry, args: argparse.Namespace, policy: Policy | None, store: Store | None = None) -> list[dict]:
     key = os.getenv(args.api_key_env)
     if not key:
@@ -1566,13 +1640,15 @@ def ai_plan_tasks(targets: Sequence[Target], skills: SkillRegistry, args: argpar
             store.add_event("ai_planner_skipped", {"reason": "missing api key", "api_key_env": args.api_key_env})
         return []
     base = args.base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
-    skill_names = [s.name for s in skills.all() if s.enabled and s.tool]
+    candidates = ai_skill_candidates(targets, skills, args, policy, int(os.getenv("AUTOATTACK_AI_SKILL_LIMIT", "30")))
     blackboard = blackboard_snapshot(store) if store else {}
     prompt = (
-        "Return only JSON: {\"tasks\":[{\"target\":\"...\",\"skill\":\"...\",\"reason\":\"...\",\"risk\":\"safe|intrusive\"}]}.\n"
-        "Choose from these skills only, never propose shell commands.\n"
+        "Return only JSON: {\"tasks\":[{\"target\":\"...\",\"skill\":\"...\",\"reason\":\"...\",\"risk\":\"safe|intrusive\"}]} .\n"
+        "Choose from these skill candidates only, never propose shell commands.\n"
         f"Targets: {[t.raw for t in targets]}\n"
-        f"Skills: {skill_names}\n"
+        "Skill candidates:\n"
+        + json.dumps(candidates, ensure_ascii=False)
+        + "\n"
         f"Policy tools: {sorted(policy.allow_tools) if policy else []}\n"
         "Current blackboard observations/findings:\n"
         + json.dumps(blackboard, ensure_ascii=False)[:12000]
@@ -1597,7 +1673,7 @@ def ai_plan_tasks(targets: Sequence[Target], skills: SkillRegistry, args: argpar
         if store:
             store.add_event("ai_planner_rejected", {"reason": "missing tasks"})
         return []
-    allowed_skills = set(skill_names)
+    allowed_skills = {item["name"] for item in candidates}
     out: list[dict] = []
     for item in tasks[:20]:
         if not isinstance(item, dict):
@@ -1607,9 +1683,8 @@ def ai_plan_tasks(targets: Sequence[Target], skills: SkillRegistry, args: argpar
         if skill in allowed_skills and target:
             out.append({"skill": skill, "target": target, "reason": str(item.get("reason", ""))[:500], "risk": str(item.get("risk", ""))[:50]})
     if store:
-        store.add_event("ai_planner_tasks", {"accepted": len(out), "proposed": len(tasks)})
+        store.add_event("ai_planner_tasks", {"accepted": len(out), "proposed": len(tasks), "candidates": len(candidates)})
     return out
-
 
 def blackboard_snapshot(store: Store | None, limit: int = 30) -> dict:
     if not store:
@@ -1748,8 +1823,8 @@ def cmd_tools(args: argparse.Namespace) -> int:
             "name": tool.name,
             "phase": tool.phase,
             "binary": tool.binary,
-            "available": tool_available(tool),
-            "version": tool_version(tool).get("version", ""),
+            "available": registry.is_available(tool),
+            "version": registry.version(tool).get("version", ""),
             "allowed_by_policy": allowed,
             "intrusive": intrusive,
             "requires_approval": intrusive and not bool(policy and policy.intrusive_approved),
@@ -1772,7 +1847,7 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 "enabled": skill.enabled,
                 "requires_approval": skill.requires_approval,
                 "tool": skill.tool.name if skill.tool else "",
-                "available": tool_available(skill.tool) if skill.tool else True,
+                "available": registry.tool_registry.is_available(skill.tool) if skill.tool else True,
                 "description": skill.description,
             })
         print(json.dumps(rows, indent=2, ensure_ascii=False))

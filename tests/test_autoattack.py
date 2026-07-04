@@ -219,7 +219,7 @@ class AutoAttackTests(unittest.TestCase):
     def test_ai_planner_bad_json_is_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = aa.Store(Path(tmp) / "state.sqlite3")
-            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1)
+            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1, tools="", profile="deep")
             old_key = os.environ.get("AUTOATTACK_TEST_KEY")
             old_chat = aa.chat_completion
             os.environ["AUTOATTACK_TEST_KEY"] = "x"
@@ -240,11 +240,13 @@ class AutoAttackTests(unittest.TestCase):
             store = aa.Store(Path(tmp) / "state.sqlite3")
             store.add_observation(aa.Observation("python", "https://example.com", "http", {"url": "https://example.com", "status": 200}))
             store.add_finding(aa.Finding("Missing common security headers", "low", "https://example.com", "csp", "python"))
-            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1)
+            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1, tools="", profile="deep")
             old_key = os.environ.get("AUTOATTACK_TEST_KEY")
             old_chat = aa.chat_completion
+            old_available = aa.tool_available
             seen = {}
             os.environ["AUTOATTACK_TEST_KEY"] = "x"
+            aa.tool_available = lambda tool: True
             def fake_chat(_base, _key, _model, prompt, **_kw):
                 seen["prompt"] = prompt
                 return json.dumps({"tasks": [{"target": "https://example.com", "skill": "httpx", "reason": "observed http", "risk": "safe"}]})
@@ -260,6 +262,54 @@ class AutoAttackTests(unittest.TestCase):
                     os.environ.pop("AUTOATTACK_TEST_KEY", None)
                 else:
                     os.environ["AUTOATTACK_TEST_KEY"] = old_key
+
+
+    def test_large_skill_registry_cache_indexes_and_topk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls = {"available": 0}
+            old_available = aa.tool_available
+            def fake_available(_tool):
+                calls["available"] += 1
+                return True
+            aa.tool_available = fake_available
+            try:
+                reg = aa.ToolRegistry()
+                reg.tools = [aa.ToolSpec(f"skill{i}", "recon" if i % 2 == 0 else "scan", f"synthetic skill {i}", False, False, sys.executable, lambda _t, _o: [sys.executable, "-V"], lambda _r: ([], [])) for i in range(1000)]
+                skills = aa.SkillRegistry(reg, Path(tmp) / "skills.json")
+                self.assertEqual(skills.get("skill999").name, "skill999")
+                target = aa.normalize_target("example.com")
+                router = aa.SkillRouter(skills, aa.Store(Path(tmp) / "state.sqlite3"))
+                plans = router.plan(target, "deep", False)
+                self.assertEqual(len(plans), 1000)
+                self.assertEqual(calls["available"], 1000)
+                router.plan(target, "deep", False)
+                self.assertEqual(calls["available"], 1000)
+                args = argparse.Namespace(tools="", profile="deep")
+                candidates = aa.ai_skill_candidates([target], skills, args, None, limit=30)
+                self.assertEqual(len(candidates), 30)
+                self.assertIn("description", candidates[0])
+                idx = {r["name"] for r in aa.Store(Path(tmp) / "state.sqlite3").db.execute("select name from sqlite_master where type='index'")}
+                self.assertIn("idx_approval_skill_target_id", idx)
+                self.assertIn("idx_skill_runs_skill_status", idx)
+            finally:
+                aa.tool_available = old_available
+
+    def test_duplicate_skill_names_are_rejected_and_policy_intrusive_risk_is_reflected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            reg = aa.ToolRegistry()
+            reg.tools = [aa.ToolSpec("dup", "scan", "a", False, False, sys.executable, lambda _t, _o: [sys.executable, "-V"], lambda _r: ([], [])), aa.ToolSpec("dup", "scan", "b", False, False, sys.executable, lambda _t, _o: [sys.executable, "-V"], lambda _r: ([], []))]
+            with self.assertRaises(ValueError):
+                aa.SkillRegistry(reg, Path(tmp) / "skills.json")
+
+            reg.tools = [aa.ToolSpec("safe-but-policy-intrusive", "scan", "policy controlled", False, False, sys.executable, lambda _t, _o: [sys.executable, "-V"], lambda _r: ([], []))]
+            skills = aa.SkillRegistry(reg, Path(tmp) / "skills2.json")
+            store = aa.Store(Path(tmp) / "state.sqlite3")
+            router = aa.SkillRouter(skills, store)
+            policy = aa.Policy({"scope": {"roots": ["example.com"], "deny": []}, "tools": {"allow": ["safe-but-policy-intrusive"], "intrusive": ["safe-but-policy-intrusive"]}, "approval": {"intrusive": False}})
+            plan = router.plan(aa.normalize_target("example.com"), "deep", False, policy=policy)[0]
+            self.assertEqual(plan.status, "approval_required")
+            self.assertEqual(plan.skill.risk, "intrusive")
+            self.assertTrue(plan.skill.requires_approval)
 
     def test_events_report_and_docker_checksums(self):
         with tempfile.TemporaryDirectory() as tmp:
