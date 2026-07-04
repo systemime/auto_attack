@@ -119,6 +119,9 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(len(manifest["effective_args"].get("skillset_sha256", "")), 64)
             self.assertEqual(manifest["agent_version"], aa.AGENT_VERSION)
             self.assertEqual(manifest["skill_schema_version"], aa.SKILL_SCHEMA_VERSION)
+            routing_events = [json.loads(r["data"]) for r in aa.Store(workspace / "state.sqlite3").rows("events") if r["kind"] == "skill_routing_summary"]
+            self.assertTrue(routing_events)
+            self.assertIn("skipped_reason_counts", routing_events[0])
             self.assertEqual(aa.main(["status", str(workspace)]), 0)
             self.assertEqual(aa.main(["report", str(workspace), "--format", "md,json,sarif"]), 0)
             self.assertEqual(aa.main(["resume", str(workspace), "--retry-failed", "1"]), 0)
@@ -532,6 +535,8 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(explained["plans"][0]["depends_on"], ["dummy.base"])
             self.assertTrue(any(x["skill"] == "dummy.low" and x["reason"] == "conflict" for x in explained["skipped"]))
             self.assertTrue(any(x["skill"] == "dummy.blocked" and "missing dependency" in x["reason"] for x in explained["skipped"]))
+            self.assertGreaterEqual(explained["skipped_reason_counts"].get("conflict", 0), 1)
+            self.assertTrue(any(k.startswith("missing dependency") for k in explained["skipped_reason_counts"]))
             eval_file = root / "eval.json"
             eval_file.write_text(json.dumps({"cases": [
                 {"name": "web route", "target": "example.com", "profile": "deep", "query": "web scan", "tools": ["cap:web"], "expect_plans": ["dummy.high"], "reject_plans": ["dummy.low"]},

@@ -938,6 +938,26 @@ def filter_skill_rows(registry: SkillRegistry, args: argparse.Namespace) -> tupl
     return rows, total
 
 
+def _inc_count(counts: dict[str, int], key: str) -> None:
+    counts[key] = counts.get(key, 0) + 1
+
+
+def skill_routing_reason_counts(skills: SkillRegistry, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None, plans: Sequence[SkillPlan] = (), candidate_names: set[str] | None = None) -> dict[str, int]:
+    plan_names = {plan.skill.name for plan in plans}
+    conflicts = {name for plan in plans for name in plan.skill.conflicts}
+    conflict_names = (conflicts & (candidate_names if candidate_names is not None else {s.name for s in skills.candidates(target, profile, selected, policy, query=target.raw, executable_only=True)})) - plan_names
+    counts: dict[str, int] = {}
+    for _ in conflict_names:
+        _inc_count(counts, "conflict")
+    for skill in skills.all():
+        if skill.name in plan_names or skill.name in conflict_names:
+            continue
+        reason = "builtin_internal" if skill.name == "python-recon" else ("metadata_only" if not skill.tool else skills.skip_reason(skill, target, profile, selected, policy))
+        if reason:
+            _inc_count(counts, reason)
+    return dict(sorted(counts.items()))
+
+
 def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, allow_intrusive: bool, selected: set[str] | None = None, policy: Policy | None = None, limit: int = 30, query: str = "", include_skipped: int = 20) -> dict:
     query_terms = _terms(query or target.raw)
     candidates = skills.candidates(target, profile, selected, policy, limit, query or target.raw, executable_only=True)
@@ -945,6 +965,7 @@ def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, a
     plans = router.plan(target, profile, allow_intrusive, selected, policy, limit, query or target.raw)
     plan_names = {plan.skill.name for plan in plans}
     candidate_names = {skill.name for skill in candidates}
+    reason_counts = skill_routing_reason_counts(skills, target, profile, selected, policy, plans, candidate_names)
     conflicts = {name for plan in plans for name in plan.skill.conflicts}
     skipped: list[dict] = []
     skipped_names: set[str] = set()
@@ -967,6 +988,7 @@ def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, a
         "query": query,
         "skillset_sha256": skills.skillset_digest,
         "counts": {"total": len(skills.all()), "candidates": len(candidates), "planned": len(plans), "skipped_reported": len(skipped)},
+        "skipped_reason_counts": reason_counts,
         "candidates": [skill_candidate_payload(skill) | {"score": skills.match_score(skill, query_terms)} for skill in candidates],
         "plans": [{
             "skill": plan.skill.name,
@@ -1415,7 +1437,22 @@ class Agent:
             jobs: list[tuple[ToolSpec, Target, str]] = []
             job_keys: set[tuple[str, str]] = set()
             for target in current:
-                for plan in self.router.plan(target, self.args.profile, self.args.allow_intrusive, selected, self.policy):
+                candidates = self.skill_registry.candidates(target, self.args.profile, selected, self.policy, executable_only=True)
+                plans = self.router.plan(target, self.args.profile, self.args.allow_intrusive, selected, self.policy)
+                status_counts: dict[str, int] = {}
+                for plan in plans:
+                    _inc_count(status_counts, plan.status)
+                self.store.add_event("skill_routing_summary", {
+                    "target": target.raw,
+                    "profile": self.args.profile,
+                    "selected": sorted(selected or []),
+                    "candidates": len(candidates),
+                    "planned": len(plans),
+                    "plan_status": dict(sorted(status_counts.items())),
+                    "skipped_reason_counts": skill_routing_reason_counts(self.skill_registry, target, self.args.profile, selected, self.policy, plans, {s.name for s in candidates}),
+                    "skillset_sha256": self.skill_registry.skillset_digest,
+                })
+                for plan in plans:
                     self._queue_plan(plan, jobs, job_keys)
             for plan in self._ai_plans(current, selected):
                 self._queue_plan(plan, jobs, job_keys, prefix="ai")
