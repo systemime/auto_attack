@@ -128,6 +128,8 @@ class ToolSpec:
     binary: str
     build: Callable[[Target, Path], list[str] | None]
     parse: Callable[[CommandResult], tuple[list[Observation], list[Finding]]]
+    input_schema: dict[str, object] = dataclasses.field(default_factory=dict)
+    output_schema: dict[str, object] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -151,6 +153,8 @@ class SkillSpec:
     min_agent_version: str = ""
     max_agent_version: str = ""
     dependency_versions: tuple[tuple[str, str], ...] = ()
+    input_schema: dict[str, object] = dataclasses.field(default_factory=dict)
+    output_schema: dict[str, object] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -239,7 +243,8 @@ class Store:
               name text primary key, version text, phase text, risk text, enabled integer,
               requires_approval integer, description text, tool text, source text, tags text,
               capabilities text, priority integer, needs_url integer, conflicts text, depends_on text,
-              schema_version integer, min_agent_version text, max_agent_version text, dependency_versions text
+              schema_version integer, min_agent_version text, max_agent_version text, dependency_versions text,
+              input_schema text, output_schema text
             );
             create table if not exists skill_runs(
               id integer primary key, ts text, skill text, target text, status text,
@@ -289,6 +294,8 @@ class Store:
             "min_agent_version": "text",
             "max_agent_version": "text",
             "dependency_versions": "text",
+            "input_schema": "text",
+            "output_schema": "text",
         }.items():
             self.ensure_column("skills", col, typ)
         self.ensure_column("job_queue", "skill", "text")
@@ -427,8 +434,8 @@ class Store:
     def upsert_skill(self, skill: SkillSpec) -> None:
         with self.lock:
             self.db.execute(
-                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on,schema_version,min_agent_version,max_agent_version,dependency_versions)
-                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on,schema_version,min_agent_version,max_agent_version,dependency_versions,input_schema,output_schema)
+                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     skill.name,
                     skill.version,
@@ -449,6 +456,8 @@ class Store:
                     skill.min_agent_version,
                     skill.max_agent_version,
                     json.dumps(dict(skill.dependency_versions), ensure_ascii=False),
+                    json.dumps(skill.input_schema or (skill.tool.input_schema if skill.tool and skill.tool.input_schema else _default_tool_input_schema(skill.tool)), ensure_ascii=False),
+                    json.dumps(skill.output_schema or (skill.tool.output_schema if skill.tool and skill.tool.output_schema else DEFAULT_TOOL_OUTPUT_SCHEMA), ensure_ascii=False),
                 ),
             )
             self.db.commit()
@@ -788,6 +797,17 @@ def _dependency_specs(value: object) -> tuple[list[str], tuple[tuple[str, str], 
     return names, tuple(sorted(versions.items()))
 
 
+def _json_schema(value: object, field: str, default: dict[str, object] | None = None) -> dict[str, object]:
+    if value is None:
+        return dict(default or {})
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    schema = dict(value)
+    if "type" in schema and str(schema.get("type", "")) not in {"object", "array", "string", "number", "integer", "boolean"}:
+        raise ValueError(f"{field}.type is invalid")
+    return schema
+
+
 def _version_satisfies(version: str, constraint: str) -> bool:
     match = re.fullmatch(r"(>=|<=|==|>|<)([a-zA-Z0-9_.:-]+)", constraint or "")
     if not match:
@@ -806,6 +826,26 @@ def _bool(value: object, default: bool = False) -> bool:
 
 def _default_skill_terms(name: str, phase: str, tool: str = "") -> list[str]:
     return _list_str([phase, tool, *re.split(r"[.:-]+", name)])
+
+
+def _default_tool_input_schema(tool: ToolSpec | None = None, needs_url: bool = False) -> dict[str, object]:
+    required = ["target"]
+    properties: dict[str, object] = {
+        "target": {"type": "string"},
+        "workspace": {"type": "string"},
+    }
+    if needs_url or (tool and tool.needs_url):
+        properties["target"] = {"type": "string", "format": "uri"}
+    return {"type": "object", "required": required, "properties": properties}
+
+
+DEFAULT_TOOL_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "observations": {"type": "array"},
+        "findings": {"type": "array"},
+    },
+}
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -905,10 +945,14 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
         "conflicts": conflicts,
         "depends_on": depends_on,
         "dependency_versions": dict(dependency_versions),
+        "input_schema": _json_schema(data.get("input_schema"), "input_schema", _default_tool_input_schema(needs_url=_bool(data.get("needs_url"), False))),
+        "output_schema": _json_schema(data.get("output_schema"), "output_schema", DEFAULT_TOOL_OUTPUT_SCHEMA),
     }
 
 
 def skill_to_manifest(skill: SkillSpec) -> dict:
+    input_schema = skill.input_schema or (skill.tool.input_schema if skill.tool and skill.tool.input_schema else _default_tool_input_schema(skill.tool))
+    output_schema = skill.output_schema or (skill.tool.output_schema if skill.tool and skill.tool.output_schema else DEFAULT_TOOL_OUTPUT_SCHEMA)
     return {
         "name": skill.name,
         "version": skill.version,
@@ -929,11 +973,15 @@ def skill_to_manifest(skill: SkillSpec) -> dict:
         "conflicts": list(skill.conflicts),
         "depends_on": list(skill.depends_on),
         "dependency_versions": dict(skill.dependency_versions),
+        "input_schema": input_schema,
+        "output_schema": output_schema,
         "executable": bool(skill.tool),
     }
 
 
 def skill_candidate_payload(skill: SkillSpec) -> dict:
+    input_schema = skill.input_schema or (skill.tool.input_schema if skill.tool and skill.tool.input_schema else _default_tool_input_schema(skill.tool))
+    output_schema = skill.output_schema or (skill.tool.output_schema if skill.tool and skill.tool.output_schema else DEFAULT_TOOL_OUTPUT_SCHEMA)
     return {
         "name": skill.name,
         "schema_version": skill.schema_version,
@@ -946,6 +994,7 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
         "executable": bool(skill.tool),
         "depends_on": list(skill.depends_on),
         "dependency_versions": dict(skill.dependency_versions),
+        "contract_sha256": _json_sha256({"input_schema": input_schema, "output_schema": output_schema}),
         "description": skill.description[:300],
     }
 
@@ -976,8 +1025,12 @@ def skill_selected(skill: SkillSpec, selected: set[str] | None) -> bool:
     return False
 
 
-def skill_list_row(registry: SkillRegistry, skill: SkillSpec, query_terms: set[str] | None = None) -> dict:
+def skill_list_row(registry: SkillRegistry, skill: SkillSpec, query_terms: set[str] | None = None, include_schema: bool = False) -> dict:
     row = skill_to_manifest(skill)
+    if not include_schema:
+        input_schema = row.pop("input_schema")
+        output_schema = row.pop("output_schema")
+        row["contract_sha256"] = _json_sha256({"input_schema": input_schema, "output_schema": output_schema})
     row["available"] = registry.is_available(skill.tool) if skill.tool else True
     row["score"] = registry.match_score(skill, query_terms or set())
     return row
@@ -1029,7 +1082,7 @@ def skill_detail(registry: SkillRegistry, name: str, include_raw: bool = False) 
     skill = registry.get(name) or next((s for s in registry.all() if s.tool and s.tool.name == name), None)
     if not skill:
         return {"name": name, "ok": False, "error": "unknown skill"}
-    detail = skill_list_row(registry, skill)
+    detail = skill_list_row(registry, skill, include_schema=True)
     detail["ok"] = True
     if skill.tool:
         detail["tool_detail"] = {"name": skill.tool.name, "phase": skill.tool.phase, "binary": skill.tool.binary, "intrusive": skill.tool.intrusive, "needs_url": skill.tool.needs_url}
@@ -1307,11 +1360,11 @@ class SkillRegistry:
 
     def _refresh(self) -> None:
         skills = [
-            SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", None, "python-recon" not in self.disabled, "builtin", ("builtin", "recon"), ("dns", "tcp", "http"), 70, False, (), ())
+            SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", enabled="python-recon" not in self.disabled, source="builtin", tags=("builtin", "recon"), capabilities=("dns", "tcp", "http"), priority=70)
         ]
         for tool in self.tool_registry.tools:
             risk = "intrusive" if tool.intrusive else "safe"
-            skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled, "tool", (tool.phase,), (tool.name, tool.phase), 50, tool.needs_url, (), ()))
+            skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled, "tool", (tool.phase,), (tool.name, tool.phase), 50, tool.needs_url, (), (), input_schema=tool.input_schema or _default_tool_input_schema(tool), output_schema=tool.output_schema or DEFAULT_TOOL_OUTPUT_SCHEMA))
         skills.extend(self._load_manifest_skills())
         by_name: dict[str, SkillSpec] = {}
         duplicates: list[str] = []
@@ -1367,7 +1420,7 @@ class SkillRegistry:
                 str(path), tuple(spec.get("tags", [])), tuple(spec.get("capabilities", [])), int(spec.get("priority", 50)),
                 bool(spec.get("needs_url", False) or (tool and tool.needs_url)), tuple(spec.get("conflicts", [])), tuple(spec.get("depends_on", [])),
                 int(spec.get("schema_version", SKILL_SCHEMA_VERSION)), str(spec.get("min_agent_version", "")), str(spec.get("max_agent_version", "")),
-                tuple(sorted((spec.get("dependency_versions") or {}).items())),
+                tuple(sorted((spec.get("dependency_versions") or {}).items())), spec.get("input_schema", {}), spec.get("output_schema", {}),
             ))
         return out
 

@@ -310,9 +310,13 @@ class AutoAttackTests(unittest.TestCase):
                 candidates = aa.ai_skill_candidates([target], skills, args, None, limit=30)
                 self.assertEqual(len(candidates), 30)
                 self.assertIn("description", candidates[0])
+                self.assertIn("contract_sha256", candidates[0])
                 idx = {r["name"] for r in aa.Store(Path(tmp) / "state.sqlite3").db.execute("select name from sqlite_master where type='index'")}
                 self.assertIn("idx_approval_skill_target_id", idx)
                 self.assertIn("idx_skill_runs_skill_status", idx)
+                cols = {r[1] for r in aa.Store(Path(tmp) / "state.sqlite3").db.execute("pragma table_info(skills)")}
+                self.assertIn("input_schema", cols)
+                self.assertIn("output_schema", cols)
             finally:
                 aa.tool_available = old_available
 
@@ -475,6 +479,8 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(normalized["tags"], ["web", "headers"])
             self.assertEqual(normalized["capabilities"], ["http", "headers"])
             self.assertTrue(normalized["needs_url"])
+            self.assertEqual(normalized["input_schema"]["type"], "object")
+            self.assertEqual(normalized["output_schema"]["type"], "object")
             versioned = aa.normalize_skill_manifest({"name": "web.versioned", "description": "versioned", "depends_on": {"python-recon": ">=1"}})
             self.assertEqual(versioned["depends_on"], ["python-recon"])
             self.assertEqual(versioned["dependency_versions"], {"python-recon": ">=1"})
@@ -536,6 +542,11 @@ class AutoAttackTests(unittest.TestCase):
             rc, rows = self._capture_json(["skills", "validate", str(bad_schema)])
             self.assertEqual(rc, 1)
             self.assertIn("unsupported schema_version", rows[0]["error"])
+            bad_contract = root / "bad_contract.json"
+            bad_contract.write_text(json.dumps({"name": "bad.contract", "description": "bad", "input_schema": []}))
+            rc, rows = self._capture_json(["skills", "validate", str(bad_contract)])
+            self.assertEqual(rc, 1)
+            self.assertIn("input_schema must be an object", rows[0]["error"])
             rc, rows = self._capture_json(["skills", "validate", str(bad_dir)])
             self.assertEqual(rc, 1)
             self.assertIn("missing dependencies", rows[0]["error"])
