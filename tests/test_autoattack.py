@@ -321,6 +321,15 @@ class AutoAttackTests(unittest.TestCase):
                 cols = {r[1] for r in aa.Store(Path(tmp) / "state.sqlite3").db.execute("pragma table_info(skills)")}
                 self.assertIn("input_schema", cols)
                 self.assertIn("output_schema", cols)
+                old_registry = aa.ToolRegistry
+                aa.ToolRegistry = lambda: reg
+                try:
+                    rc, doctor = self._capture_json(["skills", "doctor"])
+                    self.assertEqual(rc, 0)
+                    self.assertEqual(doctor["counts"]["total"], 1001)
+                    self.assertEqual(doctor["counts"]["unavailable"], 0)
+                finally:
+                    aa.ToolRegistry = old_registry
             finally:
                 aa.tool_available = old_available
 

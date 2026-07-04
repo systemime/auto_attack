@@ -1097,6 +1097,31 @@ def skill_detail(registry: SkillRegistry, name: str, include_raw: bool = False) 
     return detail
 
 
+def skill_doctor(registry: SkillRegistry) -> dict:
+    rows = [skill_list_row(registry, skill) for skill in registry.all()]
+    counts: dict[str, int] = {"total": len(rows), "enabled": 0, "disabled": 0, "executable": 0, "metadata_only": 0, "available": 0, "unavailable": 0}
+    by_phase: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    unavailable: list[str] = []
+    disabled: list[str] = []
+    metadata_only: list[str] = []
+    for row in rows:
+        counts["enabled" if row["enabled"] else "disabled"] += 1
+        counts["executable" if row["executable"] else "metadata_only"] += 1
+        if row["executable"]:
+            counts["available" if row["available"] else "unavailable"] += 1
+        if not row["available"] and row["executable"]:
+            unavailable.append(row["name"])
+        if not row["enabled"]:
+            disabled.append(row["name"])
+        if not row["executable"]:
+            metadata_only.append(row["name"])
+        by_phase[row["phase"]] = by_phase.get(row["phase"], 0) + 1
+        source = "manifest" if row["source"] not in {"builtin", "tool"} else row["source"]
+        by_source[source] = by_source.get(source, 0) + 1
+    return {"ok": not unavailable, "skillset_sha256": registry.skillset_digest, "counts": counts, "by_phase": dict(sorted(by_phase.items())), "by_source": dict(sorted(by_source.items())), "unavailable": unavailable[:50], "disabled": disabled[:50], "metadata_only": metadata_only[:50]}
+
+
 def _inc_count(counts: dict[str, int], key: str) -> None:
     counts[key] = counts.get(key, 0) + 1
 
@@ -2802,6 +2827,10 @@ def cmd_skills(args: argparse.Namespace) -> int:
         print(json.dumps(skill_trace(store, args.target, args.skill, args.limit), indent=2, ensure_ascii=False))
         return 0
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
+    if args.skill_cmd == "doctor":
+        payload = skill_doctor(registry)
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0 if payload["ok"] else 1
     if args.skill_cmd == "list":
         rows, total = filter_skill_rows(registry, args)
         if getattr(args, "summary", False):
@@ -3393,6 +3422,8 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("--config", default="", help=argparse.SUPPRESS)
     skills.add_argument("--skills-dir", default=os.getenv("AUTOATTACK_SKILLS_DIR", ""), help="directory of JSON skill manifests")
     skill_sub = skills.add_subparsers(dest="skill_cmd", required=True)
+    skills_doctor = skill_sub.add_parser("doctor", help="check skill registry health")
+    skills_doctor.set_defaults(func=cmd_skills)
     skills_list = skill_sub.add_parser("list", help="list local skills")
     skills_list.add_argument("--phase", choices=sorted(ALLOWED_SKILL_PHASES), default="")
     skills_list.add_argument("--risk", choices=sorted(ALLOWED_SKILL_RISKS), default="")
