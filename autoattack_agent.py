@@ -1451,6 +1451,7 @@ class SkillRegistry:
         by_source: dict[str, list[SkillSpec]] = {}
         by_term: dict[str, list[SkillSpec]] = {}
         term_df: Counter[str] = Counter()
+        skill_terms: dict[str, set[str]] = {}
         for skill in skills:
             if skill.name in by_name:
                 duplicates.append(skill.name)
@@ -1466,6 +1467,7 @@ class SkillRegistry:
             source = "manifest" if skill.source not in {"builtin", "tool"} else skill.source
             by_source.setdefault(source, []).append(skill)
             terms = _skill_terms(skill)
+            skill_terms[skill.name] = terms
             term_df.update(terms)
             for term in terms:
                 by_term.setdefault(term, []).append(skill)
@@ -1483,6 +1485,7 @@ class SkillRegistry:
         self._by_risk = by_risk
         self._by_source = by_source
         self._by_term = by_term
+        self._skill_terms = skill_terms
         self._term_weight = {term: max(1, min(50, len(skills) // count)) for term, count in term_df.items() if count}
         self._skillset_digest = _json_sha256({"skills": [skill_to_manifest(s) for s in self._skills]})
 
@@ -1562,12 +1565,12 @@ class SkillRegistry:
 
     def match_score(self, skill: SkillSpec, query_terms: set[str]) -> int:
         score = int(skill.priority)
-        terms = _skill_terms(skill)
+        terms = self._skill_terms.get(skill.name, set())
         score += sum(10 * self._term_weight.get(term, 1) for term in query_terms if term in terms)
         return score
 
     def score_detail(self, skill: SkillSpec, query_terms: set[str]) -> dict:
-        matched = sorted(term for term in query_terms if term in _skill_terms(skill))
+        matched = sorted(term for term in query_terms if term in self._skill_terms.get(skill.name, set()))
         return {"score": self.match_score(skill, query_terms), "score_detail": {"priority": int(skill.priority), "matched_terms": matched, "term_weights": {term: self._term_weight.get(term, 1) for term in matched}}}
 
     def skip_reason(self, skill: SkillSpec, target: Target, profile: str, selected: set[str] | None = None, policy: Policy | None = None) -> str:
