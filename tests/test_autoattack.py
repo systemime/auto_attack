@@ -623,6 +623,16 @@ class AutoAttackTests(unittest.TestCase):
                 rc, eval_result = self._capture_json(["skills", "--skills-dir", str(skills_dir), "eval", str(eval_file)])
                 self.assertEqual(rc, 0)
                 self.assertEqual(eval_result["passed"], 2)
+                runs = root / "runs"
+                for name in ("r1", "r2"):
+                    store = aa.Store(runs / name / "state.sqlite3")
+                    store.add_skill_run("dummy.high", "example.com", "done", "dummy", reason=name)
+                    store.add_event("skill_routing_summary", {"target": "example.com", "candidates": 2, "planned": 1, "plan_status": {"ready": 1}, "skipped_reason_counts": {"conflict": 1}})
+                rc, stats = self._capture_json(["skills", "stats", str(runs)])
+                self.assertEqual(rc, 0)
+                self.assertEqual(stats["skill_runs"]["total"], 2)
+                self.assertEqual(stats["routing"]["planned"], 2)
+                self.assertEqual(stats["routing"]["skipped_reason_counts"]["conflict"], 2)
             finally:
                 aa.ToolRegistry = old_registry
 

@@ -1273,6 +1273,39 @@ def skill_stats(store: Store, limit: int = 20, max_events: int = 1000) -> dict:
     }
 
 
+def skill_stats_workspaces(path: Path, limit: int = 20, max_events: int = 1000, recursive: bool = False) -> dict:
+    dbs = sorted(path.rglob("state.sqlite3") if recursive else path.glob("*/state.sqlite3")) if path.is_dir() and not (path / "state.sqlite3").exists() else [path / "state.sqlite3"]
+    total = {"workspaces": [], "skill_runs": {"total": 0, "by_status": {}, "top_skills": []}, "runtime": {"count": 0, "seconds_total": 0.0, "seconds_avg": 0.0, "seconds_max": 0.0}, "routing": {"events": 0, "candidates": 0, "planned": 0, "plan_status": {}, "skipped_reason_counts": {}}}
+    by_skill: dict[str, dict] = {}
+    for db in [p for p in dbs if p.exists()]:
+        stats = skill_stats(Store(db), 0, max_events)
+        total["workspaces"].append(str(db.parent))
+        total["skill_runs"]["total"] += stats["skill_runs"]["total"]
+        for key, value in stats["skill_runs"]["by_status"].items():
+            total["skill_runs"]["by_status"][key] = total["skill_runs"]["by_status"].get(key, 0) + value
+        for item in stats["skill_runs"]["top_skills"]:
+            merged = by_skill.setdefault(item["skill"], {"skill": item["skill"], "total": 0, "status": {}})
+            merged["total"] += item["total"]
+            for key, value in item["status"].items():
+                merged["status"][key] = merged["status"].get(key, 0) + value
+        total["runtime"]["count"] += stats["runtime"]["count"]
+        total["runtime"]["seconds_total"] += stats["runtime"]["seconds_total"]
+        total["runtime"]["seconds_max"] = max(total["runtime"]["seconds_max"], stats["runtime"]["seconds_max"])
+        for key in ("events", "candidates", "planned"):
+            total["routing"][key] += stats["routing"][key]
+        for field in ("plan_status", "skipped_reason_counts"):
+            for key, value in stats["routing"][field].items():
+                total["routing"][field][key] = total["routing"][field].get(key, 0) + value
+    if total["runtime"]["count"]:
+        total["runtime"]["seconds_avg"] = total["runtime"]["seconds_total"] / total["runtime"]["count"]
+    total["runtime"] = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in total["runtime"].items()}
+    total["skill_runs"]["by_status"] = dict(sorted(total["skill_runs"]["by_status"].items()))
+    total["skill_runs"]["top_skills"] = sorted(by_skill.values(), key=lambda x: (-int(x["total"]), x["skill"]))[:max(0, int(limit or 0)) or None]
+    total["routing"]["plan_status"] = dict(sorted(total["routing"]["plan_status"].items()))
+    total["routing"]["skipped_reason_counts"] = dict(sorted(total["routing"]["skipped_reason_counts"].items()))
+    return total
+
+
 def _dependency_cycle(graph: dict[str, Sequence[str]]) -> list[str]:
     visiting: list[str] = []
     visited: set[str] = set()
@@ -2695,8 +2728,7 @@ def cmd_skills(args: argparse.Namespace) -> int:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0 if ok else 1
     if args.skill_cmd == "stats":
-        store = Store(Path(args.workspace).resolve() / "state.sqlite3")
-        print(json.dumps(skill_stats(store, args.limit, args.max_events), indent=2, ensure_ascii=False))
+        print(json.dumps(skill_stats_workspaces(Path(args.workspace).resolve(), args.limit, args.max_events, args.recursive), indent=2, ensure_ascii=False))
         return 0
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
     if args.skill_cmd == "list":
@@ -3332,6 +3364,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_stats.add_argument("workspace")
     skills_stats.add_argument("--limit", type=int, default=20)
     skills_stats.add_argument("--max-events", type=int, default=1000)
+    skills_stats.add_argument("--recursive", action="store_true", help="aggregate nested workspaces under a runs directory")
     skills_stats.set_defaults(func=cmd_skills)
     for name in ("enable", "disable"):
         p = skill_sub.add_parser(name, help=f"{name} a local skill")
