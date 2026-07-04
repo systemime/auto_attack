@@ -1208,18 +1208,7 @@ class SkillRegistry:
         return set()
 
     def _save(self) -> None:
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        data = json.dumps({"disabled": sorted(self.disabled)}, indent=2) + "\n"
-        fd, tmp = tempfile.mkstemp(prefix=self.config_path.name + ".", suffix=".tmp", dir=str(self.config_path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(data)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, self.config_path)
-        finally:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(tmp)
+        write_json_atomic(self.config_path, {"disabled": sorted(self.disabled)})
 
     def _refresh(self) -> None:
         skills = [
@@ -2485,9 +2474,24 @@ def cmd_tools(args: argparse.Namespace) -> int:
 
 def cmd_skills(args: argparse.Namespace) -> int:
     if args.skill_cmd == "normalize":
-        data = json.loads(Path(args.path).read_text(encoding="utf-8"))
-        print(json.dumps(normalize_skill_manifest(data, source=args.path), indent=2, ensure_ascii=False))
-        return 0
+        root = Path(args.path)
+        paths = sorted(root.rglob("*.json")) if root.is_dir() else [root]
+        rows = []
+        ok = True
+        for path in paths:
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                normalized = normalize_skill_manifest(raw, source=str(path))
+                changed = raw != normalized
+                if args.write:
+                    write_json_atomic(path, normalized)
+                rows.append({"path": str(path), "ok": True, "changed": changed, "manifest": normalized})
+            except Exception as exc:
+                ok = False
+                rows.append({"path": str(path), "ok": False, "error": str(exc)})
+        payload = rows[0]["manifest"] if len(rows) == 1 and rows[0].get("ok") and not args.write else rows
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0 if ok else 1
     if args.skill_cmd == "validate":
         rows = []
         ok = True
@@ -2995,6 +2999,21 @@ def _json(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
 
+def write_json_atomic(path: Path, data: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
+
+
 def _json_sha256(data: dict) -> str:
     return hashlib.sha256((json.dumps(data, ensure_ascii=False, sort_keys=True) + "\n").encode()).hexdigest()
 
@@ -3117,6 +3136,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_test.set_defaults(func=cmd_skills)
     skills_norm = skill_sub.add_parser("normalize", help="normalize a JSON skill manifest")
     skills_norm.add_argument("path")
+    skills_norm.add_argument("--write", action="store_true", help="rewrite manifest file(s) with normalized JSON")
     skills_norm.set_defaults(func=cmd_skills)
     skills_validate = skill_sub.add_parser("validate", help="validate a JSON skill manifest or directory")
     skills_validate.add_argument("path")
