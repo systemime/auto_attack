@@ -442,8 +442,10 @@ class AutoAttackTests(unittest.TestCase):
                 "capabilities": ["http", "headers", "http"],
                 "priority": 88,
                 "needs_url": "true",
+                "depends_on": "python-recon",
             }))
             normalized = aa.normalize_skill_manifest(json.loads(manifest.read_text()), source=str(manifest))
+            self.assertEqual(normalized["depends_on"], ["python-recon"])
             self.assertEqual(normalized["tags"], ["web", "headers"])
             self.assertEqual(normalized["capabilities"], ["http", "headers"])
             self.assertTrue(normalized["needs_url"])
@@ -456,6 +458,19 @@ class AutoAttackTests(unittest.TestCase):
             self.assertIn("web.headers", by_name)
             self.assertEqual(by_name["web.headers"]["source"], str(manifest))
             self.assertEqual(by_name["web.headers"]["priority"], 88)
+            bad_dir = root / "bad"
+            bad_dir.mkdir()
+            (bad_dir / "bad.json").write_text(json.dumps({"name": "bad.dep", "description": "bad", "depends_on": ["missing.skill"]}))
+            rc, rows = self._capture_json(["skills", "validate", str(bad_dir)])
+            self.assertEqual(rc, 1)
+            self.assertIn("missing dependencies", rows[0]["error"])
+            cycle_dir = root / "cycle"
+            cycle_dir.mkdir()
+            (cycle_dir / "a.json").write_text(json.dumps({"name": "cycle.a", "description": "a", "depends_on": ["cycle.b"]}))
+            (cycle_dir / "b.json").write_text(json.dumps({"name": "cycle.b", "description": "b", "depends_on": ["cycle.a"]}))
+            rc, rows = self._capture_json(["skills", "validate", str(cycle_dir)])
+            self.assertEqual(rc, 1)
+            self.assertTrue(any("dependency cycle" in r.get("error", "") for r in rows))
 
     def test_manifest_skill_tool_binding_conflict_priority_routing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -463,8 +478,10 @@ class AutoAttackTests(unittest.TestCase):
             skills_dir = root / "skills"
             skills_dir.mkdir()
             for item in [
-                {"name": "dummy.high", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan", "priority": 90, "capabilities": ["web"], "conflicts": ["dummy.low"]},
+                {"name": "dummy.high", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan", "priority": 90, "capabilities": ["web"], "conflicts": ["dummy.low"], "depends_on": ["dummy.base"]},
                 {"name": "dummy.low", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "dummy web scan low", "priority": 10, "capabilities": ["web"]},
+                {"name": "dummy.blocked", "tool": "dummy", "phase": "scan", "risk": "safe", "description": "missing dep", "priority": 95, "depends_on": ["no.such"]},
+                {"name": "dummy.base", "phase": "scan", "risk": "safe", "description": "metadata dependency", "priority": 1},
                 {"name": "catalog.only", "phase": "scan", "risk": "safe", "description": "metadata only", "priority": 100},
             ]:
                 (skills_dir / f"{item['name']}.json").write_text(json.dumps(item))
@@ -479,13 +496,16 @@ class AutoAttackTests(unittest.TestCase):
             plan_names = [p.skill.name for p in plans]
             self.assertEqual(plan_names[0], "dummy.high")
             self.assertNotIn("dummy.low", plan_names)
+            self.assertNotIn("dummy.blocked", plan_names)
             self.assertNotIn("catalog.only", plan_names)
             args = argparse.Namespace(tools="", profile="deep")
             candidates = aa.ai_skill_candidates([aa.normalize_target("example.com")], skills, args, None, limit=10)
             self.assertNotIn("catalog.only", {c["name"] for c in candidates})
             explained = aa.explain_skill_routing(skills, aa.normalize_target("example.com"), "deep", False, query="web scan")
             self.assertEqual(explained["plans"][0]["skill"], "dummy.high")
+            self.assertEqual(explained["plans"][0]["depends_on"], ["dummy.base"])
             self.assertTrue(any(x["skill"] == "dummy.low" and x["reason"] == "conflict" for x in explained["skipped"]))
+            self.assertTrue(any(x["skill"] == "dummy.blocked" and "missing dependency" in x["reason"] for x in explained["skipped"]))
             old_registry = aa.ToolRegistry
             class FakeRegistry:
                 def __init__(self):

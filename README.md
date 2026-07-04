@@ -165,11 +165,12 @@ python3 autoattack_agent.py skills --skills-dir skills explain https://example.c
   "capabilities": ["http", "headers"],
   "priority": 80,
   "needs_url": true,
+  "depends_on": ["python-recon"],
   "conflicts": []
 }
 ```
 
-Manifest 字段会被规范化和校验：`name/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/conflicts`。`tool` 绑定已有外部工具时可执行；没有 `tool` 的 manifest 只进入 catalog，不会进入执行计划。Router 会按 profile、policy、目标类型、工具可用性、priority、query term 和 conflicts 选择候选；AI planner 只收到 Top-K 可执行候选。`skills explain` 输出 candidates、plans、skipped、score 和 `skillset_sha256`，用于审计海量 skills 场景下为什么选中或跳过。
+Manifest 字段会被规范化和校验：`name/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/depends_on/conflicts`。`tool` 绑定已有外部工具时可执行；没有 `tool` 的 manifest 只进入 catalog，不会进入执行计划。Router 会按 profile、policy、目标类型、工具可用性、depends_on、priority、query term 和 conflicts 选择候选；AI planner 只收到 Top-K 可执行候选。`skills explain` 输出 candidates、plans、skipped、score 和 `skillset_sha256`，用于审计海量 skills 场景下为什么选中或跳过。
 
 运行时加载：
 

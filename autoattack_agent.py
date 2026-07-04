@@ -144,6 +144,7 @@ class SkillSpec:
     priority: int = 50
     needs_url: bool = False
     conflicts: tuple[str, ...] = ()
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -231,7 +232,7 @@ class Store:
             create table if not exists skills(
               name text primary key, version text, phase text, risk text, enabled integer,
               requires_approval integer, description text, tool text, source text, tags text,
-              capabilities text, priority integer, needs_url integer, conflicts text
+              capabilities text, priority integer, needs_url integer, conflicts text, depends_on text
             );
             create table if not exists skill_runs(
               id integer primary key, ts text, skill text, target text, status text,
@@ -276,6 +277,7 @@ class Store:
             "priority": "integer",
             "needs_url": "integer",
             "conflicts": "text",
+            "depends_on": "text",
         }.items():
             self.ensure_column("skills", col, typ)
         self.ensure_column("job_queue", "skill", "text")
@@ -408,8 +410,8 @@ class Store:
     def upsert_skill(self, skill: SkillSpec) -> None:
         with self.lock:
             self.db.execute(
-                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts)
-                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """insert or replace into skills(name,version,phase,risk,enabled,requires_approval,description,tool,source,tags,capabilities,priority,needs_url,conflicts,depends_on)
+                   values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     skill.name,
                     skill.version,
@@ -425,6 +427,7 @@ class Store:
                     int(skill.priority),
                     int(skill.needs_url),
                     json.dumps(skill.conflicts, ensure_ascii=False),
+                    json.dumps(skill.depends_on, ensure_ascii=False),
                 ),
             )
             self.db.commit()
@@ -710,6 +713,25 @@ def _list_str(value: object) -> list[str]:
     return out
 
 
+def _list_names(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = re.split(r"[,\s]+", value)
+    if not isinstance(value, Sequence) or isinstance(value, (bytes, bytearray)):
+        raise ValueError("expected string or list")
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = str(item).strip()
+        if text and not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", text):
+            raise ValueError(f"invalid skill name reference: {text}")
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    return out
+
+
 def _bool(value: object, default: bool = False) -> bool:
     if value is None:
         return default
@@ -740,6 +762,10 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
     tool = str(data.get("tool") or "").strip()
     if tool and not re.fullmatch(r"[a-zA-Z0-9_.:-]{1,120}", tool):
         raise ValueError(f"invalid tool for {name}: {tool}")
+    conflicts = _list_names(data.get("conflicts", []))
+    depends_on = _list_names(data.get("depends_on", data.get("dependencies", [])))
+    if name in depends_on:
+        raise ValueError(f"skill cannot depend on itself: {name}")
     return {
         "name": name,
         "version": str(data.get("version") or "1").strip()[:80],
@@ -753,7 +779,8 @@ def normalize_skill_manifest(data: dict, source: str = "") -> dict:
         "capabilities": _list_str(data.get("capabilities", [])),
         "priority": priority,
         "needs_url": _bool(data.get("needs_url"), False),
-        "conflicts": _list_str(data.get("conflicts", [])),
+        "conflicts": conflicts,
+        "depends_on": depends_on,
     }
 
 
@@ -773,6 +800,7 @@ def skill_to_manifest(skill: SkillSpec) -> dict:
         "priority": skill.priority,
         "needs_url": skill.needs_url,
         "conflicts": list(skill.conflicts),
+        "depends_on": list(skill.depends_on),
         "executable": bool(skill.tool),
     }
 
@@ -787,6 +815,7 @@ def skill_candidate_payload(skill: SkillSpec) -> dict:
         "capabilities": list(skill.capabilities),
         "priority": skill.priority,
         "executable": bool(skill.tool),
+        "depends_on": list(skill.depends_on),
         "description": skill.description[:300],
     }
 
@@ -829,9 +858,36 @@ def explain_skill_routing(skills: SkillRegistry, target: Target, profile: str, a
             "risk": plan.skill.risk,
             "reason": plan.reason,
             "conflicts": list(plan.skill.conflicts),
+            "depends_on": list(plan.skill.depends_on),
         } for plan in plans],
         "skipped": skipped,
     }
+
+
+def _dependency_cycle(graph: dict[str, Sequence[str]]) -> list[str]:
+    visiting: list[str] = []
+    visited: set[str] = set()
+
+    def walk(name: str) -> list[str]:
+        if name in visiting:
+            return visiting[visiting.index(name):] + [name]
+        if name in visited:
+            return []
+        visiting.append(name)
+        for dep in graph.get(name, ()):
+            if dep in graph:
+                cycle = walk(dep)
+                if cycle:
+                    return cycle
+        visiting.pop()
+        visited.add(name)
+        return []
+
+    for name in graph:
+        cycle = walk(name)
+        if cycle:
+            return cycle
+    return []
 
 
 class ToolRegistry:
@@ -896,11 +952,11 @@ class SkillRegistry:
 
     def _refresh(self) -> None:
         skills = [
-            SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", None, "python-recon" not in self.disabled, "builtin", ("builtin", "recon"), ("dns", "tcp", "http"), 70, False)
+            SkillSpec("python-recon", "1", "recon", "safe", False, "builtin DNS/TCP/HTTP baseline recon", None, "python-recon" not in self.disabled, "builtin", ("builtin", "recon"), ("dns", "tcp", "http"), 70, False, (), ())
         ]
         for tool in self.tool_registry.tools:
             risk = "intrusive" if tool.intrusive else "safe"
-            skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled, "tool", (tool.phase,), (tool.name, tool.phase), 50, tool.needs_url))
+            skills.append(SkillSpec(tool.name, "1", tool.phase, risk, tool.intrusive, tool.description, tool, tool.name not in self.disabled, "tool", (tool.phase,), (tool.name, tool.phase), 50, tool.needs_url, (), ()))
         skills.extend(self._load_manifest_skills())
         by_name: dict[str, SkillSpec] = {}
         duplicates: list[str] = []
@@ -943,7 +999,7 @@ class SkillRegistry:
                 spec["name"], spec["version"], spec["phase"], risk, bool(spec["requires_approval"] or risk == "intrusive"),
                 spec["description"], tool, spec["name"] not in self.disabled and bool(spec.get("enabled", True)),
                 str(path), tuple(spec.get("tags", [])), tuple(spec.get("capabilities", [])), int(spec.get("priority", 50)),
-                bool(spec.get("needs_url", False) or (tool and tool.needs_url)), tuple(spec.get("conflicts", [])),
+                bool(spec.get("needs_url", False) or (tool and tool.needs_url)), tuple(spec.get("conflicts", [])), tuple(spec.get("depends_on", [])),
             ))
         return out
 
@@ -989,6 +1045,9 @@ class SkillRegistry:
             return "disabled"
         if selected and skill.name not in selected and (not tool or tool.name not in selected):
             return "not selected"
+        dep_reason = self._dependency_skip_reason(skill, target, profile, policy)
+        if dep_reason:
+            return dep_reason
         if tool and not self.is_available(tool):
             return "unavailable"
         policy_name = tool.name if tool else skill.name
@@ -1000,6 +1059,27 @@ class SkillRegistry:
             return "profile"
         if skill.needs_url and not target.is_url:
             return "needs url"
+        return ""
+
+    def _dependency_skip_reason(self, skill: SkillSpec, target: Target, profile: str, policy: Policy | None = None) -> str:
+        for name in skill.depends_on:
+            dep = self.get(name)
+            if not dep:
+                return f"missing dependency: {name}"
+            if not dep.enabled:
+                return f"disabled dependency: {name}"
+            dep_tool = dep.tool
+            if dep_tool and not self.is_available(dep_tool):
+                return f"unavailable dependency: {name}"
+            dep_policy_name = dep_tool.name if dep_tool else dep.name
+            if policy and policy.allow_tools and dep_policy_name not in policy.allow_tools and dep.name not in policy.allow_tools:
+                return f"dependency not allowed by policy: {name}"
+            if profile == "quick" and dep.phase not in {"recon", "fingerprint"}:
+                return f"dependency filtered by profile: {name}"
+            if profile != "deep" and dep.phase == "bruteforce":
+                return f"dependency filtered by profile: {name}"
+            if dep.needs_url and not target.is_url:
+                return f"dependency needs url: {name}"
         return ""
 
     def is_available(self, tool: ToolSpec) -> bool:
@@ -2093,6 +2173,7 @@ def cmd_skills(args: argparse.Namespace) -> int:
         ok = True
         seen: dict[str, str] = {}
         tools = ToolRegistry()
+        manifests: dict[str, dict] = {}
         for path in sorted(Path(args.path).rglob("*.json") if Path(args.path).is_dir() else [Path(args.path)]):
             try:
                 manifest = normalize_skill_manifest(json.loads(path.read_text(encoding="utf-8")), source=str(path))
@@ -2102,10 +2183,28 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 if manifest.get("tool") and not tools.get(manifest["tool"]):
                     raise ValueError(f"unknown tool for {manifest['name']}: {manifest['tool']}")
                 seen[manifest["name"]] = str(path)
+                manifests[manifest["name"]] = manifest
                 rows.append({"path": str(path), "ok": True, "manifest": manifest})
             except Exception as exc:
                 ok = False
                 rows.append({"path": str(path), "ok": False, "error": str(exc)})
+        known = {"python-recon", *(t.name for t in tools.tools), *manifests}
+        for row in rows:
+            manifest = row.get("manifest") if row.get("ok") else None
+            missing = [name for name in (manifest or {}).get("depends_on", []) if name not in known]
+            if missing:
+                row["ok"] = False
+                row["error"] = f"missing dependencies: {missing}"
+                ok = False
+        cycle = _dependency_cycle({name: manifest.get("depends_on", []) for name, manifest in manifests.items()})
+        if cycle:
+            ok = False
+            cycle_set = set(cycle)
+            for row in rows:
+                manifest = row.get("manifest") if row.get("ok") else None
+                if manifest and manifest["name"] in cycle_set:
+                    row["ok"] = False
+                    row["error"] = "dependency cycle: " + " -> ".join(cycle)
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0 if ok else 1
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
@@ -2127,6 +2226,7 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 "priority": skill.priority,
                 "needs_url": skill.needs_url,
                 "conflicts": list(skill.conflicts),
+                "depends_on": list(skill.depends_on),
                 "description": skill.description,
             })
         print(json.dumps(rows, indent=2, ensure_ascii=False))
