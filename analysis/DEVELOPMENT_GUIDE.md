@@ -61,7 +61,6 @@ Reporter（MD / JSON / SARIF，可选 LLM 总结）
 | Web UI/TUI | 可选 | 任务进度、图谱、报告 | Strix/LuaN1ao/Caldera | 未实现 |
 | Multi-agent swarm | 可选 | 黑板订阅式 agent 并发 | Pentest-Swarm-AI | 已实现 SQLite job queue + `worker`，兼容单机/共享盘小集群 |
 | LLM planner | 可选 | 让模型从 observations 选择下一步 | watchtower/PentestGPT | 已实现受控 JSON `--ai-planner`，仍经 scope/policy/router |
-| Browser automation | 可选 | Playwright/Caido/ZAP 深度 web 测试 | Shannon/Strix | 外部 ZAP baseline 适配 |
 | Template authoring | 可选 | 自定义 YAML checks | nuclei/Nettacker | 复用 nuclei，不重造 |
 
 ## 4. 推荐开发路线
@@ -89,14 +88,12 @@ Reporter（MD / JSON / SARIF，可选 LLM 总结）
 - SARIF/JUnit/HTML 报告。
 - Web UI：run state、tasks、raw output、findings。
 - MCP tool registry：让工具可热插拔。
-- Browser/ZAP/Caido session：处理登录态与复杂 Web app。
 
 ### Phase 4：平台版
 
 - Postgres + queue + distributed workers。（当前先用 SQLite `job_queue` 保持单机/分布式兼容，后续可替换后端）
 - Agent roles：recon/classifier/exploit/report。
 - Event-driven blackboard：finding type 触发 agent。
-- 多租户 scope/policy/approval。
 - Knowledge base：CVE、ExploitDB、nuclei templates、历史项目 patterns。
 
 ## 5. 最小数据模型

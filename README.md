@@ -25,8 +25,7 @@
 | 报告：Markdown / findings JSON / observations JSON / SARIF / events JSONL | 已实现 |
 | Web 控制台：状态/发现/任务/jobs/approval 少量干预 | 已实现 |
 | Web 证据：auth header/cookie、katana URL crawl、HAR 导入 | 已实现基础能力 |
-| Docker：非 root、固定 ProjectDiscovery zip、SHA256 校验 | 已实现 |
-| 多租户 SaaS、强 RBAC、完整浏览器自动攻击重放 | 未内置 |
+| Docker：非 root、固定 ProjectDiscovery release URL、SHA256 校验 | 已实现 |
 
 ## 快速开始：单机
 
@@ -129,7 +128,7 @@ Redis 只负责 job queue；状态、证据、报告仍写入 workspace。跨节
 
 ## Web 控制台
 
-仅用于整体态势展示和少量人工干预，不做强多租户或强 RBAC。默认只绑定 localhost：
+仅用于整体态势展示和少量人工干预。默认只绑定 localhost：
 
 ```bash
 python3 autoattack_agent.py web runs/local --host 127.0.0.1 --port 8765
@@ -165,7 +164,7 @@ OPENAI_API_KEY=... python3 autoattack_agent.py run example.com \
 
 LLM prompt 会包含当前 blackboard 的 observations/findings 摘要。输出只接受 `{"tasks":[{"target":"...","skill":"...","reason":"...","risk":"..."}]}`，仍会经 scope/policy/router/approval。
 
-## Web 会话与证据
+## HTTP Header/Cookie 与 HAR 证据
 
 内置轻量能力：
 
@@ -175,13 +174,12 @@ python3 autoattack_agent.py run https://app.example \
   --header "Authorization: Bearer TOKEN" \
   --cookie "sid=..."
 
-python3 autoattack_agent.py import-har runs/local browser.har
+python3 autoattack_agent.py import-har runs/local traffic.har
 ```
 
 - `--header/--cookie` 供 Python 内置 HTTP probe 使用，适合带登录态的轻量探测。
 - `katana` skill 可做 URL discovery/crawl。
-- `import-har` 被动导入浏览器 HAR，保留请求/响应状态作为证据。
-- 完整浏览器自动化、业务流攻击重放、截图/HAR 主动验证链暂缓；这类能力需要 Playwright/Caido/Burp 会话与更强沙箱后再接入。
+- `import-har` 被动导入 HAR，保留请求/响应状态作为证据。
 
 ## 产物
 
@@ -240,7 +238,7 @@ docker run --rm autoattack-agent selftest
 
 已具备生产内测核心闭环：scope/policy、skills、approval、queue、blackboard、evidence、report、Web 干预、Docker 可复现构建。
 
-尚未内置的企业级外壳：多租户/RBAC/SSO、审计日志签名与集中存储、完整浏览器自动化与代理会话、云原生调度、资产 CMDB/工单集成、专业扫描引擎替代品。本项目定位是黑盒自动化渗透编排核心，不替代 nuclei/sqlmap/amass/ZAP 等专业引擎。
+本项目定位是黑盒自动化渗透编排核心，不替代 nuclei/sqlmap/amass/ZAP 等专业引擎。
 
 ## 与 `repos/` 参考项目的关系
 
@@ -253,7 +251,7 @@ docker run --rm autoattack-agent selftest
 - 借鉴 osmedeus/caldera：operation/task 状态与 artifact/report。
 - 借鉴 AutoCVE：skills 管理、多 Agent 审计链路、漏洞管理、CVE 报告工作流、产品化 UI/后端分层。
 
-当前绝对优势是：单文件可审计、零强依赖、单机/Redis queue 双模式、Docker checksum、CLI 生产闭环。基本持平的是：PentestGPT/watchtower 的最小 agent loop、LuaN1aoAgent/airecon 的 SQLite 状态思路、轻量 skills/router/approval 闭环。仍明显落后的是：nuclei/sqlmap 的专业检测深度、amass/subfinder 的 provider 生态、Strix/Shannon 的完整 sandbox/browser、Pentest-Swarm-AI 的 Postgres 级 swarm blackboard、AutoCVE 的 Web UI/项目管理/漏洞管理/CVE 报告产品化链路。
+当前绝对优势是：单文件可审计、零强依赖、单机/Redis queue 双模式、Docker checksum、CLI 生产闭环。基本持平的是：PentestGPT/watchtower 的最小 agent loop、LuaN1aoAgent/airecon 的 SQLite 状态思路、轻量 skills/router/approval 闭环。仍明显落后的是：nuclei/sqlmap 的专业检测深度、amass/subfinder 的 provider 生态、Strix/Shannon 的强 sandbox、Pentest-Swarm-AI 的 Postgres 级 swarm blackboard、AutoCVE 的源码审计/漏洞管理/CVE 报告链路。
 
 ### 参考项目横向定位
 
@@ -262,9 +260,9 @@ docker run --rm autoattack-agent selftest
 | PentestGPT / watchtower | 最小 planner loop 基本持平；本项目 scope/policy/report/queue 更硬。 |
 | LuaN1aoAgent / airecon | SQLite blackboard 和任务状态思路基本持平；DAG/反思/沙箱弱。 |
 | Pentest-Swarm-AI | 轻量 queue 只算兼容；Postgres blackboard、cursor、swarm 调度明显落后。 |
-| Strix / Shannon | 报告与 guardrail 有基础；browser、proxy、强 sandbox、企业流程明显落后。 |
+| Strix / Shannon | 报告与 guardrail 有基础；强 sandbox、企业流程明显落后。 |
 | nuclei / nuclei-templates | 只作为编排器调用；检测引擎、模板生态、matcher/extractor 明显落后。 |
 | sqlmap | 只做轻量调用和解析；SQLi 验证/利用/恢复状态机明显落后。 |
 | subfinder / amass | 只做工具接入；provider/rate limit/资产图谱明显落后。 |
 | Nettacker / osmedeus / Caldera | CLI 编排有基础；Web/API/workflow/operation 状态机明显落后。 |
-| AutoCVE | 黑盒 CLI/审计边界更轻更可控；源码审计、Web UI、项目/漏洞/CVE 管理、multi-agent 产品化明显落后。 |
+| AutoCVE | 黑盒 CLI/审计边界更轻更可控；源码审计、漏洞/CVE 管理、multi-agent 审计链路明显落后。 |

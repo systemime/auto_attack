@@ -63,7 +63,7 @@
 | 多 agent 调度 | Pentest-Swarm-AI / Strix | 黑板触发适合大规模；动态 agent graph 适合复杂任务拆分 |
 | 状态记忆 | LuaN1aoAgent / airecon / osmedeus | SQLite 足够做 run、task、observation、finding、artifact |
 | 工具抽象 | Strix / Pentest-Swarm-AI / nuclei | 统一 registry + schema + timeout + parser，别把工具写死进 prompt |
-| 沙箱 | Shannon / Strix / airecon | Docker workspace + proxy/browser session 是可执行 agent 的底线 |
+| 沙箱 | Shannon / Strix / airecon | Docker workspace + 进程/网络隔离是可执行 agent 的底线 |
 | 模板扫描 | nuclei + templates | YAML template + matcher/extractor + rate limiter 是扫描能力核心 |
 | 强验证 | sqlmap | 稳定性检测、动态参数、technique confirmation、session cache 降误报 |
 | 资产发现 | subfinder / amass | provider 并发 + rate limit + 去重 + graph/source confidence |

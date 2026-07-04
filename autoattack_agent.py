@@ -1175,7 +1175,7 @@ def probe_http(url: str, timeout: float, headers: dict[str, str] | None = None) 
             observations.append(Observation("python", url, "http", {"url": url, "status": resp.status, "title": title, "headers": headers}))
             missing = sorted(SECURITY_HEADERS - set(headers))
             if missing:
-                findings.append(Finding("Missing common security headers", "low", url, ", ".join(missing), "python", "Set baseline browser hardening headers where applicable.", confidence="medium"))
+                findings.append(Finding("Missing common security headers", "low", url, ", ".join(missing), "python", "Set baseline client-side security headers where applicable.", confidence="medium"))
             server = headers.get("server", "")
             if server:
                 findings.append(Finding("Server header exposed", "info", url, server, "python", "Hide exact versions if they reveal patch level.", confidence="medium"))
@@ -2345,7 +2345,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--verbose", action="store_true")
     web.set_defaults(func=cmd_web)
 
-    har = sub.add_parser("import-har", help="import passive browser HAR as web evidence")
+    har = sub.add_parser("import-har", help="import passive HAR as web evidence")
     har.add_argument("workspace")
     har.add_argument("har")
     har.add_argument("--limit", type=int, default=1000)

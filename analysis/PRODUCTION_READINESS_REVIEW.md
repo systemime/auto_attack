@@ -6,7 +6,7 @@
 
 **已达到单机生产级核心 / 分布式兼容内测版。**
 
-它已经具备授权生产内测所需的核心闭环：scope guard、planner rounds、SQLite 状态、skills/router、approval queue、event log、外部工具 registry、raw evidence、JSON/Markdown/SARIF/events 报告、resume、Dockerfile checksum、以及 SQLite job queue + worker 的单机/共享盘分布式兼容。仍不包含 Web UI、多租户 SaaS、登录态浏览器自动化和 Postgres/Redis 大规模队列。
+它已经具备授权生产内测所需的核心闭环：scope guard、planner rounds、SQLite 状态、skills/router、approval queue、event log、外部工具 registry、raw evidence、JSON/Markdown/SARIF/events 报告、resume、Dockerfile checksum、以及 queue + worker 的单机/共享盘分布式兼容。
 
 ## 评分
 
@@ -18,10 +18,10 @@
 | 安全/范围控制 | 8/10 | scope guard、policy、intrusive 双 gate、approval queue |
 | 可靠性 | 7/10 | resume/cache/lease queue/测试覆盖；大规模长跑仍需实测 |
 | 可观测/审计 | 8/10 | run manifest、events、tool_runs、skill_runs、approval、raw evidence |
-| 生产部署 | 7/10 | Docker 非 root、固定 release zip、checksum 校验 |
+| 生产部署 | 7/10 | Docker 非 root、固定 release URL、checksum 校验 |
 | 测试 | 7/10 | unittest、selftest、perf smoke、Docker smoke、queue worker fixture |
 
-总体：**8/10，单机生产级核心；分布式兼容但不是大规模 SaaS 平台。**
+总体：**8/10，单机生产级核心；分布式兼容内测版。**
 
 ## 本轮发现并修复的阻断问题
 
@@ -43,7 +43,6 @@
 
 - 不应作为无人值守互联网大范围扫描平台。
 - 不应直接替代 Shannon/Strix/Caldera 级平台。
-- 不应作为多租户商业 SaaS 后端。
 - 不应宣称自动利用能力完整；当前更偏扫描/验证/报告编排。
 
 ## 升级到生产级的最短路径
