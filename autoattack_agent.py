@@ -2764,6 +2764,12 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 row["error"] = f"missing dependencies: {missing}"
                 ok = False
                 continue
+            bad_conflicts = [name for name in (manifest or {}).get("conflicts", []) if name == manifest.get("name") or name not in known]
+            if bad_conflicts:
+                row["ok"] = False
+                row["error"] = f"invalid conflicts: {bad_conflicts}"
+                ok = False
+                continue
             mismatched = [f"{name}{constraint} (found {known_versions.get(name, '')})" for name, constraint in (manifest or {}).get("dependency_versions", {}).items() if name in known_versions and not _version_satisfies(str(known_versions.get(name, "")), str(constraint))]
             if mismatched:
                 row["ok"] = False

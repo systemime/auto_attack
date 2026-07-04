@@ -557,6 +557,12 @@ class AutoAttackTests(unittest.TestCase):
             rc, rows = self._capture_json(["skills", "validate", str(bad_version_dir)])
             self.assertEqual(rc, 1)
             self.assertIn("dependency version mismatch", rows[0]["error"])
+            bad_conflict_dir = root / "bad_conflict"
+            bad_conflict_dir.mkdir()
+            (bad_conflict_dir / "bad.json").write_text(json.dumps({"name": "bad.conflict", "description": "bad", "conflicts": ["missing.skill"]}))
+            rc, rows = self._capture_json(["skills", "validate", str(bad_conflict_dir)])
+            self.assertEqual(rc, 1)
+            self.assertIn("invalid conflicts", rows[0]["error"])
             cycle_dir = root / "cycle"
             cycle_dir.mkdir()
             (cycle_dir / "a.json").write_text(json.dumps({"name": "cycle.a", "description": "a", "depends_on": ["cycle.b"]}))

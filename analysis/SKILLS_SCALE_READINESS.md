@@ -17,13 +17,13 @@
 | Enable/disable | `skills list/test/enable/disable`，`list` 支持过滤/分页/summary，禁用状态原子写入 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
-| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term inverted index/weight、conflicts 过滤和排序。 |
+| Router | 按 enabled、selected metadata、availability、policy、profile、target type、depends_on/dependency_versions、priority、query term inverted index/weight、conflicts 校验/过滤和排序。 |
 | Policy/approval | `tools.allow`、`tools.intrusive`、`approval.intrusive`、`--approve-intrusive` 双 gate。 |
 | AI planner | JSON gate，读取 blackboard，输出仍经 scope/policy/router/approval；只暴露 Top-K 可执行候选摘要和 contract digest。 |
 | Routing explainability | `skills list --summary`、`skills explain`、`skills eval`、`skills stats`、`skills trace` 覆盖候选、计划、跳过原因、回归门禁、执行耗时、trend、跨 workspace 聚合统计和单目标/skill 时间线；真实 run 写入 `skill_routing_summary` 事件。 |
 | Persistence | SQLite `skills/skill_runs/approval_requests/events/tasks/tool_runs/job_queue`，已补关键索引和热点分页读取。 |
 | Queue/concurrency | local thread pool、SQLite queue、Redis queue、worker lease/retry；queue 记录 skill 名称。 |
-| Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、depends_on、conflicts。 |
+| Tests | 覆盖 1000 fake skills、缓存、索引、duplicate、policy intrusive risk、AI Top-K、manifest normalize/validate/load、tool binding、depends_on、conflicts 引用校验。 |
 
 ## 大量 skills 当前处理方式
 
