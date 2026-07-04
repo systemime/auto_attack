@@ -1122,6 +1122,38 @@ def skill_doctor(registry: SkillRegistry) -> dict:
     return {"ok": not unavailable, "skillset_sha256": registry.skillset_digest, "counts": counts, "by_phase": dict(sorted(by_phase.items())), "by_source": dict(sorted(by_source.items())), "unavailable": unavailable[:50], "disabled": disabled[:50], "metadata_only": metadata_only[:50]}
 
 
+def skill_manifest_schema() -> dict:
+    name = {"type": "string", "pattern": r"^[a-zA-Z0-9_.:-]{1,120}$"}
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "AutoAttack Skill Manifest",
+        "type": "object",
+        "required": ["name", "description"],
+        "additionalProperties": True,
+        "properties": {
+            "name": name,
+            "schema_version": {"type": "integer", "enum": [SKILL_SCHEMA_VERSION]},
+            "min_agent_version": {"type": "string"},
+            "max_agent_version": {"type": "string"},
+            "version": {"type": "string"},
+            "description": {"type": "string", "minLength": 1},
+            "phase": {"type": "string", "enum": sorted(ALLOWED_SKILL_PHASES)},
+            "risk": {"type": "string", "enum": sorted(ALLOWED_SKILL_RISKS)},
+            "tool": name,
+            "enabled": {"type": "boolean"},
+            "requires_approval": {"type": "boolean"},
+            "tags": {"type": "array", "items": name},
+            "capabilities": {"type": "array", "items": name},
+            "priority": {"type": "integer", "minimum": 0, "maximum": 100},
+            "needs_url": {"type": "boolean"},
+            "depends_on": {"oneOf": [{"type": "array", "items": name}, {"type": "object", "additionalProperties": {"type": "string"}}, {"type": "string"}]},
+            "conflicts": {"type": "array", "items": name},
+            "input_schema": {"type": "object"},
+            "output_schema": {"type": "object"},
+        },
+    }
+
+
 def _inc_count(counts: dict[str, int], key: str) -> None:
     counts[key] = counts.get(key, 0) + 1
 
@@ -2826,6 +2858,9 @@ def cmd_skills(args: argparse.Namespace) -> int:
         store = Store(Path(args.workspace).resolve() / "state.sqlite3")
         print(json.dumps(skill_trace(store, args.target, args.skill, args.limit), indent=2, ensure_ascii=False))
         return 0
+    if args.skill_cmd == "schema":
+        print(json.dumps(skill_manifest_schema(), indent=2, ensure_ascii=False))
+        return 0
     registry = SkillRegistry(config_path=Path(args.config) if getattr(args, "config", "") else None, skills_dir=Path(args.skills_dir) if getattr(args, "skills_dir", "") else None)
     if args.skill_cmd == "doctor":
         payload = skill_doctor(registry)
@@ -3422,6 +3457,8 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("--config", default="", help=argparse.SUPPRESS)
     skills.add_argument("--skills-dir", default=os.getenv("AUTOATTACK_SKILLS_DIR", ""), help="directory of JSON skill manifests")
     skill_sub = skills.add_subparsers(dest="skill_cmd", required=True)
+    skills_schema = skill_sub.add_parser("schema", help="print JSON schema for skill manifests")
+    skills_schema.set_defaults(func=cmd_skills)
     skills_doctor = skill_sub.add_parser("doctor", help="check skill registry health")
     skills_doctor.set_defaults(func=cmd_skills)
     skills_list = skill_sub.add_parser("list", help="list local skills")

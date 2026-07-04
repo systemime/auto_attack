@@ -13,7 +13,7 @@
 | 维度 | 当前状态 |
 |---|---|
 | Registry | `python-recon` + `ToolRegistry.tools` + JSON manifest skills，by-name 缓存和 duplicate 检测。 |
-| Manifest | `skills normalize/validate`，支持单文件/目录批量规范化、legacy alias/schema v0 迁移、input/output schema contract、原子回写与 strict CI 门禁；字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
+| Manifest | `skills schema/normalize/validate`，支持 JSON Schema 输出、单文件/目录批量规范化、legacy alias/schema v0 迁移、input/output schema contract、原子回写与 strict CI 门禁；字段规范化：name/schema_version/min_agent_version/max_agent_version/version/description/phase/risk/tool/enabled/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts；缺省 tags/capabilities 自动从 phase/tool/name 补齐。 |
 | Enable/disable | `skills doctor/list/test/enable/disable`，`doctor` 汇总 registry 健康度，`list` 支持过滤/分页/summary，禁用状态原子写入 JSON。 |
 | Metadata routing | phase/risk/tags/capabilities/priority/needs_url/input_schema/output_schema/depends_on/dependency_versions/conflicts/source 持久化到 SQLite。 |
 | Executable binding | manifest `tool` 绑定已有 `ToolSpec` 后可执行；无 tool 的 manifest 只进入 catalog，不进执行计划。 |
@@ -28,7 +28,7 @@
 ## 大量 skills 当前处理方式
 
 1. **注册**：内置 recon、外部工具、`--skills-dir`/`AUTOATTACK_SKILLS_DIR` JSON manifest 合并成统一 `SkillSpec`。
-2. **规范化**：manifest 支持单文件/目录批量 normalize、legacy alias/schema v0 迁移、`--write` 原子回写和 `validate --strict` CI 门禁，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、input_schema/output_schema、depends_on/dependency_versions、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
+2. **规范化**：manifest 支持 JSON Schema 输出、单文件/目录批量 normalize、legacy alias/schema v0 迁移、`--write` 原子回写和 `validate --strict` CI 门禁，统一校验 name、schema_version、agent version range、phase、risk、priority、tags、capabilities、input_schema/output_schema、depends_on/dependency_versions、conflicts、needs_url 等字段；缺省 tags/capabilities 自动补可路由元数据。
 3. **索引**：启动时构建 `_by_name/_by_tag/_by_capability/_by_phase/_by_term` 和 query term weight，并生成 `skillset_digest`；CLI list 支持过滤、排序和分页。
 4. **召回**：`SkillRegistry.candidates()` 根据 profile、policy、selected、target type、工具可用性过滤；`selected` 支持 skill/tool 精确名和 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 选择器。
 5. **排序**：按 term 倒排召回 + priority/query term 权重分排序，AI planner 默认最多拿 30 个可执行候选。
