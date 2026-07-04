@@ -944,6 +944,20 @@ def filter_skill_rows(registry: SkillRegistry, args: argparse.Namespace) -> tupl
     return rows, total
 
 
+def skill_detail(registry: SkillRegistry, name: str, include_raw: bool = False) -> dict:
+    skill = registry.get(name) or next((s for s in registry.all() if s.tool and s.tool.name == name), None)
+    if not skill:
+        return {"name": name, "ok": False, "error": "unknown skill"}
+    detail = skill_list_row(registry, skill)
+    detail["ok"] = True
+    if skill.tool:
+        detail["tool_detail"] = {"name": skill.tool.name, "phase": skill.tool.phase, "binary": skill.tool.binary, "intrusive": skill.tool.intrusive, "needs_url": skill.tool.needs_url}
+    if include_raw and skill.source not in {"builtin", "tool"}:
+        with contextlib.suppress(Exception):
+            detail["raw_manifest"] = json.loads(Path(skill.source).read_text(encoding="utf-8"))
+    return detail
+
+
 def _inc_count(counts: dict[str, int], key: str) -> None:
     counts[key] = counts.get(key, 0) + 1
 
@@ -2552,6 +2566,10 @@ def cmd_skills(args: argparse.Namespace) -> int:
     if args.skill_cmd == "test":
         print(json.dumps(registry.test(args.name), indent=2, ensure_ascii=False))
         return 0
+    if args.skill_cmd == "show":
+        detail = skill_detail(registry, args.name, args.raw)
+        print(json.dumps(detail, indent=2, ensure_ascii=False))
+        return 0 if detail.get("ok") else 1
     if args.skill_cmd == "explain":
         target = normalize_target(args.target)
         policy = load_policy(args.policy, [target]) if getattr(args, "policy", "") else None
@@ -3134,6 +3152,10 @@ def build_parser() -> argparse.ArgumentParser:
     skills_test = skill_sub.add_parser("test", help="test a local skill manifest/build/parser")
     skills_test.add_argument("name")
     skills_test.set_defaults(func=cmd_skills)
+    skills_show = skill_sub.add_parser("show", help="show full normalized skill details")
+    skills_show.add_argument("name")
+    skills_show.add_argument("--raw", action="store_true", help="include source JSON for manifest skills")
+    skills_show.set_defaults(func=cmd_skills)
     skills_norm = skill_sub.add_parser("normalize", help="normalize a JSON skill manifest")
     skills_norm.add_argument("path")
     skills_norm.add_argument("--write", action="store_true", help="rewrite manifest file(s) with normalized JSON")

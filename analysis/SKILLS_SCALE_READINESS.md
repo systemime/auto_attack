@@ -6,7 +6,7 @@
 
 **已具备大量 skills 的生产级基础设施雏形。** 当前机制不再依赖纯硬编码 skill 列表，已经支持 JSON manifest 规范化、目录加载、元数据索引、Top-K 候选召回、工具绑定、冲突控制、policy/profile/target 过滤、审批、queue/worker 和审计记录。
 
-仍不能称为完整大型插件生态：缺少二级详情按需加载、依赖版本约束、选择评估集、embedding/vector retrieval、schema 级 tool contract 和更完整的 trace UI。
+仍不能称为完整大型插件生态：缺少依赖版本约束、embedding/vector retrieval、schema 级 tool contract 和更完整的 trace UI。
 
 ## 当前已具备
 
@@ -41,7 +41,7 @@
 | 主流机制 | 当前状态 | 评价 |
 |---|---|---|
 | Registry + metadata | name/schema_version/agent version range/version/phase/risk/description/tool/source/tags/capabilities/priority/needs_url/depends_on/conflicts | 基础达标 |
-| Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata | 部分达标；无二级详情加载 |
+| Progressive disclosure | AI planner 只给 Top-K 可执行候选 metadata；`skills show` 可按需加载完整规范 manifest/源 JSON | 基础达标 |
 | Capability schema | `ToolSpec` 有 build/parse/needs_url，manifest 有 capabilities | 部分达标；无 JSON Schema/OpenAPI/MCP schema |
 | Dynamic filtering/routing | policy/profile/target/query/metadata selectors/depends_on/priority/conflicts | 基础达标；无 embedding/retrieval |
 | Namespace/tag/grouping | tags/capabilities/source 已有 | 基础达标；无 namespace 级隔离 |
@@ -54,7 +54,6 @@
 
 - 已有轻量 `depends_on` 存在性/可用性约束和 agent 版本范围校验；仍缺 schema migration。
 - 无 embedding/vector retrieval；当前是轻量规则召回与排序。
-- 无二级详情加载；候选只给 metadata。
 - router 已记录 skipped reason 分布，并提供 `skills eval` 离线路由回归与 `skills stats` workspace 聚合；跨 run 的长期趋势仍不完整。
 - `skills list`、Web API、jobs/approvals CLI 与黑板快照已支持分页/最近 N 条读取；更复杂报表仍可按需继续分页化。
 - enable/disable JSON 已原子写入；仍无跨进程锁，极端并发管理时最后写入者获胜。
