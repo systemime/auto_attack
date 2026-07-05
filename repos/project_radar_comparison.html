@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoAttack 与 repos 项目雷达对比</title>
+<style>
+:root{--bg:#0b1020;--panel:#121936;--muted:#9aa8d8;--text:#eef2ff;--line:#2c3768;--blue:#67a7ff;--orange:#ffb86b}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+main{max-width:1320px;margin:auto;padding:28px} h1{font-size:28px;margin:0 0 8px} h2{margin:0 0 12px;font-size:19px} p{margin:8px 0} .muted{color:var(--muted)}
+.legend{display:flex;gap:16px;margin:16px 0 22px;flex-wrap:wrap} .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px} .b{background:var(--blue)} .o{background:var(--orange)}
+.gridwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px} .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 28px #0004}
+.chart{display:flex;justify-content:center;margin:4px 0 12px} svg{width:min(100%,310px);height:auto} .grid{fill:none;stroke:#34406f;stroke-width:.8} .axis{stroke:#34406f;stroke-width:.8} .label{fill:#c6d0ff;font-size:10px}
+.auto{fill:#67a7ff22;stroke:var(--blue);stroke-width:2} .other{fill:#ffb86b26;stroke:var(--orange);stroke-width:2}
+table{width:100%;border-collapse:collapse;margin:16px 0 26px;background:var(--panel);border-radius:12px;overflow:hidden} th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:top} th{color:#dbe4ff;background:#182149}
+.note{border-left:4px solid var(--blue);padding:8px 12px;background:#101936;border-radius:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>AutoAttack 与 repos 项目雷达对比</h1>
+<p class="muted">评分 0-10，基于本地 README/目录结构的快速对比；AutoAttack 基线固定为黑盒 DAST 编排、scope/policy/approval、SkillRouter、SQLite/Redis queue 与多格式报告。</p>
+<div class="legend"><span><i class="dot b"></i>AutoAttack</span><span><i class="dot o"></i>对比项目</span></div>
+<p class="note">Ponytail 版本：单文件、零外部依赖、内联 SVG。评分用于取舍方向，不是论文级 benchmark。</p>
+<h2>评分维度</h2>
+<table><thead><tr><th>维度</th><th>含义</th></tr></thead><tbody><tr><td>DAST闭环</td><td>黑盒侦察→验证→报告闭环</td></tr><tr><td>安全门控</td><td>scope/policy/approval/audit 控制</td></tr><tr><td>Agent编排</td><td>Planner/Router/Executor/Analyst 自动化</td></tr><tr><td>分布式</td><td>队列/worker/可恢复执行</td></tr><tr><td>知识资产</td><td>payload/playbook/template/checklist 等内容</td></tr><tr><td>专项深度</td><td>某一安全方向的成熟深度</td></tr></tbody></table>
+<h2>总览</h2>
+<table><thead><tr><th>项目</th><th>定位</th><th>对方优势</th><th>对方短板</th><th>结论</th></tr></thead><tbody><tr><td>Arsenal</td><td>本地离线 pentest/bug bounty 知识库与命令构建器。</td><td>Payload、GTFOBins、攻击链、清单、报告模板和搜索体验更强。</td><td>偏手工辅助，不做自动扫描/队列/审批/证据编排。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>LuaN1aoAgent</td><td>认知驱动的 LLM 自主渗透 Agent。</td><td>P-E-R、因果图谱、动态 DAG、RAG、HITL/Web 可视化更先进。</td><td>依赖和复杂度更高，安全执行/分布式队列不如 AutoAttack 简洁受控。</td><td>各有侧重</td></tr><tr><td>Nettacker</td><td>OWASP 自动化信息收集与漏洞评估框架。</td><td>多协议、多模块、Web/API、漂移检测、网络/IoT 覆盖成熟。</td><td>规则/模块扫描为主，缺少 AutoAttack 的 AI 计划、skill gate 与审批链。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>Pentest-Swarm-AI</td><td>Go 实现的蜂群式 AI 渗透平台。</td><td>黑板+pheromone、真实 swarm 设计、ProjectDiscovery 工具链、MCP/Action。</td><td>swarm/dashboard/Postgres 后端仍偏 alpha/beta，整体比 AutoAttack 重。</td><td>各有侧重</td></tr><tr><td>PentestGPT</td><td>研究导向的 AI 渗透/CTF Agent。</td><td>USENIX 背书、PTT/迭代上下文、CTF/benchmark 叙事强。</td><td>原生工具编排、scope/policy/证据库/分布式执行弱于 AutoAttack。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>agentic_security</td><td>LLM/Agent 工作流 jailbreak 与 fuzzing 扫描器。</td><td>LLM 安全、数据集、CI、多模态/多步攻击专项能力强。</td><td>不是通用 Web/网络 DAST，不覆盖 AutoAttack 的侦察-验证-报告链。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>airecon</td><td>本地 Ollama + Kali Docker 的离线 AI 渗透 Agent。</td><td>离线隐私、Caido 集成、Kali 沙箱、本地安全知识库/记忆很强。</td><td>硬件和模型要求高，阶段约束偏软，分布式/审批控制不如 AutoAttack。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>amass</td><td>OWASP 外部资产发现与攻击面映射工具。</td><td>子域/资产发现深度、数据源和网络图谱能力强。</td><td>只做 recon/ASM，不做漏洞验证、AI 编排和报告闭环。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>autocve</td><td>面向 CVE 挖掘的源码审计与报告平台。</td><td>白盒源码审计、CVE 报告、前后端平台、多 Agent 审计强。</td><td>目标不同：偏源码/CVE，不是 AutoAttack 的黑盒 DAST；部署更重。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>caldera</td><td>MITRE ATT&amp;CK 驱动的对手仿真/C2 平台。</td><td>ATT&amp;CK、插件、agent、红蓝演练和后渗透自动化成熟。</td><td>不是 Web 黑盒 DAST；操作风险和部署复杂度远高于 AutoAttack。</td><td>各有侧重</td></tr><tr><td>nuclei</td><td>高性能 YAML 模板漏洞扫描引擎。</td><td>模板生态、速度、多协议、CI 集成强，适合作为 AutoAttack skill。</td><td>单一扫描器，无 AI 规划、approval、blackboard/queue 编排。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>nuclei-templates</td><td>nuclei 的社区模板库。</td><td>覆盖面巨大，CVE/KEV/云/HTTP/DNS/代码模板丰富。</td><td>只是内容库，不能独立执行；依赖 nuclei 和外部编排。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>osmedeus</td><td>声明式安全工作流编排引擎。</td><td>YAML 工作流、分布式、云运行、事件调度、API/UI、SAST/SARIF 很全。</td><td>泛化且复杂，可执行任意工作流；不如 AutoAttack 默认受控和轻量。</td><td>各有侧重</td></tr><tr><td>pentestagent</td><td>TUI 驱动的 AI 渗透助手/多 Agent 工具。</td><td>Assist/Agent/Crew、浏览器/终端、MCP 自生成子 Agent、Kali Docker。</td><td>更像交互式通用 Agent，policy/approval/结构化证据和队列弱。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>shannon</td><td>源码感知的白盒 AI Web/API Pentester。</td><td>源码分析+真实 exploit 验证，报告只收可证明漏洞。</td><td>需要源码和 Docker；不适合纯黑盒外部资产场景。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>sqlmap</td><td>SQL 注入检测、利用和数据库接管专用工具。</td><td>SQLi 深度、tamper、DB 指纹/提权/文件/命令能力远强。</td><td>范围极窄且侵入性高；无 AutoAttack 的编排、审批和多工具报告。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>strix</td><td>面向应用的多 Agent AI pentest/修复工具。</td><td>SAST+DAST、PoC 验证、自动修复、CI/PR 集成、开发者体验强。</td><td>Docker/API/平台依赖更重，透明可审计和本地最小化不如 AutoAttack。</td><td>各有侧重</td></tr><tr><td>subfinder</td><td>ProjectDiscovery 被动子域枚举工具。</td><td>快、轻、stdout/JSON 友好，适合流水线集成。</td><td>只做子域发现，不能替代 AutoAttack 的漏洞验证和报告闭环。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>watchtower</td><td>LangGraph 多 Agent 渗透自动化 CLI。</td><td>23 个工具包装、Planner/Worker/Analyst、SQLite 记忆、PDF 报告。</td><td>简化版 Agent 框架，分布式、approval、skill 路由和安全门控弱于 AutoAttack。</td><td>AutoAttack 整体更均衡</td></tr></tbody></table>
+<h2>逐项雷达图</h2>
+<div class="gridwrap">
+<section class="card">
+  <h2>Arsenal</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 Arsenal 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,107.4 147.9,111.8 140.2,133.8 125.0,133.8 48.8,169.0 79.3,98.6" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>本地离线 pentest/bug bounty 知识库与命令构建器。</p>
+  <p><b>对方优势：</b>Payload、GTFOBins、攻击链、清单、报告模板和搜索体验更强。</p>
+  <p><b>对方短板：</b>偏手工辅助，不做自动扫描/队列/审批/证据编排。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>LuaN1aoAgent</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 LuaN1aoAgent 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,72.2 163.1,103.0 193.6,164.6 125.0,160.2 64.0,160.2 71.7,94.2" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>认知驱动的 LLM 自主渗透 Agent。</p>
+  <p><b>对方优势：</b>P-E-R、因果图谱、动态 DAG、RAG、HITL/Web 可视化更先进。</p>
+  <p><b>对方短板：</b>依赖和复杂度更高，安全执行/分布式队列不如 AutoAttack 简洁受控。</p>
+  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>Nettacker</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 Nettacker 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,63.4 163.1,103.0 155.5,142.6 125.0,169.0 71.7,155.8 64.0,89.8" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>OWASP 自动化信息收集与漏洞评估框架。</p>
+  <p><b>对方优势：</b>多协议、多模块、Web/API、漂移检测、网络/IoT 覆盖成熟。</p>
+  <p><b>对方短板：</b>规则/模块扫描为主，缺少 AutoAttack 的 AI 计划、skill gate 与审批链。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>Pentest-Swarm-AI</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 Pentest-Swarm-AI 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,63.4 163.1,103.0 193.6,164.6 125.0,195.4 79.3,151.4 71.7,94.2" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>Go 实现的蜂群式 AI 渗透平台。</p>
+  <p><b>对方优势：</b>黑板+pheromone、真实 swarm 设计、ProjectDiscovery 工具链、MCP/Action。</p>
+  <p><b>对方短板：</b>swarm/dashboard/Postgres 后端仍偏 alpha/beta，整体比 AutoAttack 重。</p>
+  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>PentestGPT</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 PentestGPT 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,89.8 155.5,107.4 186.0,160.2 125.0,142.6 79.3,151.4 71.7,94.2" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>研究导向的 AI 渗透/CTF Agent。</p>
+  <p><b>对方优势：</b>USENIX 背书、PTT/迭代上下文、CTF/benchmark 叙事强。</p>
+  <p><b>对方短板：</b>原生工具编排、scope/policy/证据库/分布式执行弱于 AutoAttack。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>agentic_security</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 agentic_security 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,98.6 163.1,103.0 170.7,151.4 125.0,151.4 64.0,160.2 56.4,85.4" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>LLM/Agent 工作流 jailbreak 与 fuzzing 扫描器。</p>
+  <p><b>对方优势：</b>LLM 安全、数据集、CI、多模态/多步攻击专项能力强。</p>
+  <p><b>对方短板：</b>不是通用 Web/网络 DAST，不覆盖 AutoAttack 的侦察-验证-报告链。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>airecon</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 airecon 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,72.2 163.1,103.0 186.0,160.2 125.0,151.4 64.0,160.2 71.7,94.2" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>本地 Ollama + Kali Docker 的离线 AI 渗透 Agent。</p>
+  <p><b>对方优势：</b>离线隐私、Caido 集成、Kali 沙箱、本地安全知识库/记忆很强。</p>
+  <p><b>对方短板：</b>硬件和模型要求高，阶段约束偏软，分布式/审批控制不如 AutoAttack。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>amass</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 amass 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,89.8 155.5,107.4 140.2,133.8 125.0,160.2 71.7,155.8 48.8,81.0" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>OWASP 外部资产发现与攻击面映射工具。</p>
+  <p><b>对方优势：</b>子域/资产发现深度、数据源和网络图谱能力强。</p>
+  <p><b>对方短板：</b>只做 recon/ASM，不做漏洞验证、AI 编排和报告闭环。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>autocve</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 autocve 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,98.6 163.1,103.0 186.0,160.2 125.0,169.0 71.7,155.8 56.4,85.4" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>面向 CVE 挖掘的源码审计与报告平台。</p>
+  <p><b>对方优势：</b>白盒源码审计、CVE 报告、前后端平台、多 Agent 审计强。</p>
+  <p><b>对方短板：</b>目标不同：偏源码/CVE，不是 AutoAttack 的黑盒 DAST；部署更重。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>caldera</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 caldera 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,107.4 170.7,98.6 178.3,155.8 125.0,186.6 64.0,160.2 48.8,81.0" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>MITRE ATT&amp;CK 驱动的对手仿真/C2 平台。</p>
+  <p><b>对方优势：</b>ATT&amp;CK、插件、agent、红蓝演练和后渗透自动化成熟。</p>
+  <p><b>对方短板：</b>不是 Web 黑盒 DAST；操作风险和部署复杂度远高于 AutoAttack。</p>
+  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>nuclei</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 nuclei 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,63.4 155.5,107.4 140.2,133.8 125.0,169.0 56.4,164.6 48.8,81.0" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>高性能 YAML 模板漏洞扫描引擎。</p>
+  <p><b>对方优势：</b>模板生态、速度、多协议、CI 集成强，适合作为 AutoAttack skill。</p>
+  <p><b>对方短板：</b>单一扫描器，无 AI 规划、approval、blackboard/queue 编排。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>nuclei-templates</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 nuclei-templates 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,107.4 147.9,111.8 132.6,129.4 125.0,133.8 48.8,169.0 56.4,85.4" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>nuclei 的社区模板库。</p>
+  <p><b>对方优势：</b>覆盖面巨大，CVE/KEV/云/HTTP/DNS/代码模板丰富。</p>
+  <p><b>对方短板：</b>只是内容库，不能独立执行；依赖 nuclei 和外部编排。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>osmedeus</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 osmedeus 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,63.4 163.1,103.0 170.7,151.4 125.0,204.2 64.0,160.2 64.0,89.8" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>声明式安全工作流编排引擎。</p>
+  <p><b>对方优势：</b>YAML 工作流、分布式、云运行、事件调度、API/UI、SAST/SARIF 很全。</p>
+  <p><b>对方短板：</b>泛化且复杂，可执行任意工作流；不如 AutoAttack 默认受控和轻量。</p>
+  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>pentestagent</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 pentestagent 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,81.0 155.5,107.4 186.0,160.2 125.0,151.4 79.3,151.4 71.7,94.2" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>TUI 驱动的 AI 渗透助手/多 Agent 工具。</p>
+  <p><b>对方优势：</b>Assist/Agent/Crew、浏览器/终端、MCP 自生成子 Agent、Kali Docker。</p>
+  <p><b>对方短板：</b>更像交互式通用 Agent，policy/approval/结构化证据和队列弱。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>shannon</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 shannon 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,81.0 163.1,103.0 186.0,160.2 125.0,151.4 79.3,151.4 56.4,85.4" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>源码感知的白盒 AI Web/API Pentester。</p>
+  <p><b>对方优势：</b>源码分析+真实 exploit 验证，报告只收可证明漏洞。</p>
+  <p><b>对方短板：</b>需要源码和 Docker；不适合纯黑盒外部资产场景。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>sqlmap</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 sqlmap 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,81.0 147.9,111.8 132.6,129.4 125.0,142.6 86.9,147.0 48.8,81.0" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>SQL 注入检测、利用和数据库接管专用工具。</p>
+  <p><b>对方优势：</b>SQLi 深度、tamper、DB 指纹/提权/文件/命令能力远强。</p>
+  <p><b>对方短板：</b>范围极窄且侵入性高；无 AutoAttack 的编排、审批和多工具报告。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>strix</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 strix 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,63.4 163.1,103.0 193.6,164.6 125.0,169.0 71.7,155.8 56.4,85.4" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>面向应用的多 Agent AI pentest/修复工具。</p>
+  <p><b>对方优势：</b>SAST+DAST、PoC 验证、自动修复、CI/PR 集成、开发者体验强。</p>
+  <p><b>对方短板：</b>Docker/API/平台依赖更重，透明可审计和本地最小化不如 AutoAttack。</p>
+  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>subfinder</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 subfinder 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,98.6 155.5,107.4 132.6,129.4 125.0,151.4 86.9,147.0 48.8,81.0" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>ProjectDiscovery 被动子域枚举工具。</p>
+  <p><b>对方优势：</b>快、轻、stdout/JSON 友好，适合流水线集成。</p>
+  <p><b>对方短板：</b>只做子域发现，不能替代 AutoAttack 的漏洞验证和报告闭环。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section>
+<section class="card">
+  <h2>watchtower</h2>
+  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 watchtower 雷达图">
+  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
+<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
+<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
+<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
+<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
+<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
+<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
+<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
+<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
+<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
+<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
+<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
+<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
+<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
+<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
+<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
+<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
+  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
+  <polygon points="125.0,72.2 163.1,103.0 186.0,160.2 125.0,151.4 79.3,151.4 71.7,94.2" class="other"/>
+</svg></div>
+  <p class="pos"><b>定位：</b>LangGraph 多 Agent 渗透自动化 CLI。</p>
+  <p><b>对方优势：</b>23 个工具包装、Planner/Worker/Analyst、SQLite 记忆、PDF 报告。</p>
+  <p><b>对方短板：</b>简化版 Agent 框架，分布式、approval、skill 路由和安全门控弱于 AutoAttack。</p>
+  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+</section></div>
+</main>
+</body>
+</html>

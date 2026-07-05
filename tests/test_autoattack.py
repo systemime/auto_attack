@@ -1,10 +1,15 @@
 import argparse
+import contextlib
 import hashlib
 import json
 import os
 import sys
 import tempfile
+import time
 import unittest
+import urllib.error
+import urllib.request
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -237,6 +242,62 @@ class AutoAttackTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue(result["ok"])
             self.assertEqual(aa.Store(workspace / "state.sqlite3").rows("approval_requests")[0]["status"], "approved")
+
+    def test_console_approval_shows_command_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            store = aa.Store(workspace / "state.sqlite3")
+            store.add_approval_request("intrusive", "https://x/?id=1", "sqlmap", "sqlmap", "intrusive", "rule:validate:deep")
+            html = aa.render_console(workspace)
+            self.assertIn("sqlmap -u", html)
+            self.assertIn("https://x/?id=1", html)
+            self.assertIn("rule:validate:deep", html)
+
+    def test_report_includes_command_reason_and_reproduce_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            store = aa.Store(workspace / "state.sqlite3")
+            cmd = [sys.executable, "-c", "print('vulnerable')"]
+            digest = aa._digest(cmd)
+            result = aa.CommandResult("dummy", "https://x", cmd, 0, "vulnerable\n", "", 0.1, str(workspace / "raw.txt"), digest)
+            store.save_command(digest, result)
+            store.add_skill_run("dummy.skill", "https://x", "done", "dummy", digest, "rule:scan:deep")
+            store.add_finding(aa.Finding("Demo finding", "high", "https://x", "vulnerable", "dummy", evidence_path=result.output_file, command_digest=digest))
+            aa.write_report(workspace, store, [aa.normalize_target("https://x")], argparse.Namespace(profile="deep", allow_intrusive=False, max_steps=1), formats={"md"})
+            text = (workspace / "report.md").read_text()
+            self.assertIn("- Command: `", text)
+            self.assertIn("vulnerable", text)
+            self.assertIn("- Reason: rule:scan:deep", text)
+            self.assertIn("- Reproduce: rerun the command", text)
+
+    def test_web_host_guard_and_no_store_headers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.Popen([sys.executable, str(ROOT / "autoattack_agent.py"), "web", tmp, "--host", "127.0.0.1", "--port", "0"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                line = proc.stdout.readline().strip()
+                self.assertTrue(line.startswith("http://127.0.0.1:"), line)
+                for _ in range(30):
+                    try:
+                        req = urllib.request.Request(line + "/api/status", headers={"Host": "127.0.0.1"})
+                        with urllib.request.urlopen(req, timeout=1) as resp:
+                            self.assertEqual(resp.headers.get("Cache-Control"), "no-store")
+                            break
+                    except Exception:
+                        time.sleep(0.1)
+                else:
+                    self.fail("web console did not start")
+                bad = urllib.request.Request(line + "/api/status", headers={"Host": "evil.test"})
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(bad, timeout=1)
+                self.assertEqual(ctx.exception.code, 403)
+            finally:
+                proc.terminate()
+                with contextlib.suppress(Exception):
+                    proc.wait(timeout=3)
+                with contextlib.suppress(Exception):
+                    proc.stdout.close()
+                with contextlib.suppress(Exception):
+                    proc.stderr.close()
 
     def test_ai_planner_bad_json_is_safe(self):
         with tempfile.TemporaryDirectory() as tmp:

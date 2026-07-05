@@ -17,6 +17,7 @@ import ipaddress
 import json
 import os
 import re
+import shlex
 import shutil
 import socket
 import sqlite3
@@ -2427,7 +2428,14 @@ def write_report(workspace: Path, store: Store, targets: Sequence[Target], args:
     findings.sort(key=lambda x: (sev_order.get(str(x["severity"]).lower(), 9), x["target"], x["title"]))
     report = workspace / "report.md"
     if "md" in formats:
-        report.write_text(_render_report(targets, findings, observations, args, llm_summary), encoding="utf-8")
+        md_findings = [dict(f) for f in findings]
+        run_reasons = {str(r["command_digest"]): str(r["reason"]) for r in store.rows("skill_runs") if r["command_digest"]}
+        for f in md_findings:
+            cached = store.get_command(str(f.get("command_digest") or ""))
+            if cached:
+                f["_command"] = shlex.join(cached.command)
+                f["_reason"] = run_reasons.get(cached.digest, "")
+        report.write_text(_render_report(targets, md_findings, observations, args, llm_summary), encoding="utf-8")
         store.add_artifact(report, "report")
     if "json" in formats:
         findings_path = workspace / "findings.json"
@@ -2491,6 +2499,12 @@ def _render_report(targets: Sequence[Target], findings: list[dict], observations
             lines.append(f"- Evidence path: `{f['evidence_path']}`")
         if f.get("command_digest"):
             lines.append(f"- Command digest: `{f['command_digest']}`")
+        if f.get("_command"):
+            lines.append(f"- Command: `{f['_command']}`")
+        if f.get("_reason"):
+            lines.append(f"- Reason: {f['_reason']}")
+        if f.get("_command") or f.get("evidence_path"):
+            lines.append("- Reproduce: rerun the command against the same target and compare the saved evidence/output.")
         if f.get("first_seen") or f.get("last_seen"):
             lines.append(f"- Seen: `{f.get('first_seen') or ''}` -> `{f.get('last_seen') or ''}`")
         if f.get("recommendation"):
@@ -2934,13 +2948,28 @@ def cmd_jobs(args: argparse.Namespace) -> int:
 
 def cmd_web(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace).resolve()
+    allowed_hosts = {args.host.lower(), "127.0.0.1", "localhost", "::1"}
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *a) -> None:
             if args.verbose:
                 super().log_message(fmt, *a)
 
+        def _host_allowed(self) -> bool:
+            raw = self.headers.get("Host", "")
+            host = raw[1:].split("]", 1)[0] if raw.startswith("[") else raw.split(":", 1)[0]
+            return not host or host.lower() in allowed_hosts
+
+        def end_headers(self) -> None:
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            super().end_headers()
+
         def do_GET(self) -> None:
+            if not self._host_allowed():
+                self.send_error(403)
+                return
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path.startswith("/api/"):
                 self._json(api_payload(workspace, parsed.path.removeprefix("/api/"), parsed.query))
@@ -2948,6 +2977,9 @@ def cmd_web(args: argparse.Namespace) -> int:
             self._html(render_console(workspace))
 
         def do_POST(self) -> None:
+            if not self._host_allowed():
+                self.send_error(403)
+                return
             parsed = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(parsed.query)
             rid = int((qs.get("id") or ["0"])[0])
@@ -2977,7 +3009,7 @@ def cmd_web(args: argparse.Namespace) -> int:
             self.wfile.write(data)
 
     server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"http://{args.host}:{server.server_port}")
+    print(f"http://{args.host}:{server.server_port}", flush=True)
     server.serve_forever()
     return 0
 
@@ -3045,12 +3077,18 @@ def render_console(workspace: Path) -> str:
         head = "".join(f"<th>{esc(c)}</th>" for c in cols)
         return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
     approval_rows = []
+    registry = ToolRegistry()
     for r in approvals:
         action = ""
         if r.get("status") == "pending":
             action = f"<form method='post' action='/approve?id={r['id']}'><button>approve</button></form><form method='post' action='/deny?id={r['id']}'><button>deny</button></form>"
         rr = dict(r)
         rr["action"] = action
+        rr["command"] = ""
+        with contextlib.suppress(Exception):
+            tool = registry.get(str(r.get("tool") or ""))
+            target = normalize_target(str(r.get("target") or ""))
+            rr["command"] = shlex.join(tool.build(target, workspace / "raw") or []) if tool else ""
         approval_rows.append(rr)
     return f"""<!doctype html>
 <meta charset="utf-8"><meta http-equiv="refresh" content="10">
@@ -3073,7 +3111,7 @@ button{{margin:2px;padding:4px 8px}} code{{color:#ffd479}}
 <div class="cards"><div class='card'><b>skill_runs</b><br>{esc(skills['skill_runs']['total'])}</div><div class='card'><b>routing</b><br>{esc(skills['routing'])}</div></div>
 {table(skills['skill_runs']['top_skills'], ['skill','total','status'])}
 {table(skills['trend'], ['day','skill_runs','by_status'])}
-<h2>Approvals</h2>{table(approval_rows, ['id','status','target','skill','tool','risk','reason','action'])}
+<h2>Approvals</h2>{table(approval_rows, ['id','status','target','skill','tool','risk','reason','command','action'])}
 <h2>Recent Findings</h2>{table(findings, ['id','severity','title','target','source','confidence','validation_status'])}
 <h2>Recent Jobs</h2>{table(jobs, ['id','status','tool','target','attempts','lease_owner','detail'])}
 <h2>Recent Tasks</h2>{table(tasks, ['id','phase','tool','target','status','detail'])}

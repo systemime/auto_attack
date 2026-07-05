@@ -141,6 +141,17 @@ python3 autoattack_agent.py web runs/local --host 127.0.0.1 --port 8765
 
 大量 skills 处理机制的生产级评估见 [`analysis/SKILLS_SCALE_READINESS.md`](analysis/SKILLS_SCALE_READINESS.md)。
 
+Skills 处理链路：
+
+1. `ToolRegistry` 先把 PATH 中可用外部工具建成内置 tool skills；`python-recon` 始终作为内置基线 skill。
+2. `SkillRegistry` 再加载 `--skills-dir` / `AUTOATTACK_SKILLS_DIR` 下的 JSON manifest：旧字段迁移、schema/版本/risk/phase/tool 校验、默认 tags/capabilities/input/output schema 补齐、依赖与冲突规范化。
+3. Registry 建立 name/tool/tag/capability/phase/risk/source/term 倒排索引，按 `priority + query term weight` 评分，并生成 `skillset_sha256`；每个候选暴露 `contract_sha256`，AI planner 只拿 Top-K 摘要。
+4. `SkillRouter` 对每个 target 按 profile、`--tools`/元数据选择器、policy allowlist、工具可用性、depends_on、`needs_url`、query、priority 和 conflicts 选出可执行计划。
+5. Intrusive skill 不直接执行：未满足 `approval.intrusive=true` + `--approve-intrusive` 或人工 approve 时进入 `approval_required`；批准后 resume 继续。
+6. 运行期把 `skill_routing_summary`、skill_runs、events 写入 workspace，可用 `skills explain/eval/stats/trace` 复盘候选、跳过原因、命中得分和执行结果。
+
+路由要点：`quick` 只取 `recon/fingerprint`，默认 profile 跳过 `bruteforce`，`deep` 不按 phase 收窄；`--tools` 支持 skill/tool 精确名，也支持 `tag:*`、`cap:*`、`phase:*`、`risk:*`、`source:*` 先收窄候选；manifest 没有绑定 `tool` 时只进 catalog，不进入执行计划。
+
 ```bash
 python3 autoattack_agent.py skills schema
 python3 autoattack_agent.py skills doctor
