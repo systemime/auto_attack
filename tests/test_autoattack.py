@@ -122,13 +122,14 @@ class AutoAttackTests(unittest.TestCase):
             policy = tmp / "policy.json"
             workspace = tmp / "run"
             self.assertEqual(aa.main(["init", "--output", str(policy)]), 0)
-            self.assertEqual(aa.main(["run", "127.0.0.1", "--policy", str(policy), "--workspace", str(workspace), "--profile", "quick", "--max-steps", "0", "--timeout", "1", "--rounds", "1"]), 0)
+            self.assertEqual(aa.main(["run", "127.0.0.1", "--policy", str(policy), "--workspace", str(workspace), "--profile", "quick", "--max-steps", "0", "--timeout", "1", "--rounds", "1", "--tool-runtime", "privileged-docker"]), 0)
             for name in ("run.json", "policy.json", "state.sqlite3", "report.md", "findings.json", "observations.json", "report.sarif.json"):
                 self.assertTrue((workspace / name).exists(), name)
             manifest = json.loads((workspace / "run.json").read_text())
             self.assertEqual(manifest["status"], "completed")
             self.assertIn("policy_sha256", manifest)
             self.assertEqual(len(manifest["effective_args"].get("skillset_sha256", "")), 64)
+            self.assertEqual(manifest["effective_args"]["tool_runtime"], "privileged-docker")
             self.assertEqual(manifest["agent_version"], aa.AGENT_VERSION)
             self.assertEqual(manifest["skill_schema_version"], aa.SKILL_SCHEMA_VERSION)
             routing_events = [json.loads(r["data"]) for r in aa.Store(workspace / "state.sqlite3").rows("events") if r["kind"] == "skill_routing_summary"]
@@ -339,7 +340,7 @@ class AutoAttackTests(unittest.TestCase):
     def test_ai_planner_bad_json_is_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = aa.Store(Path(tmp) / "state.sqlite3")
-            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1, tools="", profile="deep")
+            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1, tools="", profile="deep", tool_runtime="privileged-docker", tool_runtime_note="")
             old_key = os.environ.get("AUTOATTACK_TEST_KEY")
             old_chat = aa.chat_completion
             os.environ["AUTOATTACK_TEST_KEY"] = "x"
@@ -360,7 +361,7 @@ class AutoAttackTests(unittest.TestCase):
             store = aa.Store(Path(tmp) / "state.sqlite3")
             store.add_observation(aa.Observation("python", "https://example.com", "http", {"url": "https://example.com", "status": 200}))
             store.add_finding(aa.Finding("Missing common security headers", "low", "https://example.com", "csp", "python"))
-            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1, tools="", profile="deep")
+            args = argparse.Namespace(api_key_env="AUTOATTACK_TEST_KEY", base_url="http://127.0.0.1", model="test", timeout=1, tools="", profile="deep", tool_runtime="privileged-docker", tool_runtime_note="")
             old_key = os.environ.get("AUTOATTACK_TEST_KEY")
             old_chat = aa.chat_completion
             old_available = aa.tool_available
@@ -376,6 +377,7 @@ class AutoAttackTests(unittest.TestCase):
                 self.assertEqual(tasks[0]["skill"], "httpx")
                 self.assertIn("Missing common security headers", seen["prompt"])
                 self.assertIn("\"observations\"", seen["prompt"])
+                self.assertIn("privileged-docker", seen["prompt"])
             finally:
                 aa.chat_completion = old_chat
                 if old_key is None:

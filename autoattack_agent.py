@@ -2678,6 +2678,14 @@ def ai_skill_candidates(targets: Sequence[Target], skills: SkillRegistry, args: 
     return out
 
 
+def tool_runtime_context(args: argparse.Namespace) -> dict:
+    runtime = getattr(args, "tool_runtime", "") or os.getenv("AUTOATTACK_TOOL_RUNTIME", "host")
+    note = getattr(args, "tool_runtime_note", "") or os.getenv("AUTOATTACK_TOOL_RUNTIME_NOTE", "")
+    if runtime == "privileged-docker" and not note:
+        note = "Tools run in a privileged Linux Docker container with host network and host mounts; choose skills accordingly, but never propose shell commands."
+    return {"runtime": runtime, "note": note}
+
+
 def ai_plan_tasks(targets: Sequence[Target], skills: SkillRegistry, args: argparse.Namespace, policy: Policy | None, store: Store | None = None) -> list[dict]:
     key = os.getenv(args.api_key_env)
     if not key:
@@ -2687,9 +2695,11 @@ def ai_plan_tasks(targets: Sequence[Target], skills: SkillRegistry, args: argpar
     base = args.base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
     candidates = ai_skill_candidates(targets, skills, args, policy, int(os.getenv("AUTOATTACK_AI_SKILL_LIMIT", "30")))
     blackboard = blackboard_snapshot(store) if store else {}
+    runtime = tool_runtime_context(args)
     prompt = (
         "Return only JSON: {\"tasks\":[{\"target\":\"...\",\"skill\":\"...\",\"reason\":\"...\",\"risk\":\"safe|intrusive\"}]} .\n"
         "Choose from these skill candidates only, never propose shell commands.\n"
+        f"Tool runtime context: {json.dumps(runtime, ensure_ascii=False)}\n"
         f"Targets: {[t.raw for t in targets]}\n"
         "Skill candidates:\n"
         + json.dumps(candidates, ensure_ascii=False)
@@ -2809,6 +2819,8 @@ def build_manifest(run_id: str, started_at: str, status: str, workspace: Path, t
             "execution_mode": getattr(args, "execution_mode", "local"),
             "queue_backend": getattr(args, "queue_backend", "sqlite"),
             "queue_name": getattr(args, "queue_name", ""),
+            "tool_runtime": tool_runtime_context(args)["runtime"],
+            "tool_runtime_note": tool_runtime_context(args)["note"],
             "skills_dir": getattr(args, "skills_dir", "") or "",
             "skillset_sha256": getattr(args, "skillset_sha256", "") or "",
             "headers": [str(h).split(":", 1)[0].strip() for h in (getattr(args, "headers", []) or [])],
@@ -3282,6 +3294,8 @@ def cmd_worker(args: argparse.Namespace) -> int:
         execution_mode="local",
         queue_backend=args.queue_backend or effective.get("queue_backend", "sqlite"),
         queue_name=args.queue_name or effective.get("queue_name", "") or _queue_name(workspace, manifest.get("run_id", "")),
+        tool_runtime=effective.get("tool_runtime", os.getenv("AUTOATTACK_TOOL_RUNTIME", "host")),
+        tool_runtime_note=effective.get("tool_runtime_note", os.getenv("AUTOATTACK_TOOL_RUNTIME_NOTE", "")),
         skills_dir=effective.get("skills_dir", ""),
         skillset_sha256=effective.get("skillset_sha256", ""),
         base_url=effective.get("base_url"),
@@ -3444,6 +3458,8 @@ def cmd_resume(args: argparse.Namespace) -> int:
         execution_mode=effective.get("execution_mode", "local"),
         queue_backend=effective.get("queue_backend", "sqlite"),
         queue_name=effective.get("queue_name", ""),
+        tool_runtime=effective.get("tool_runtime", os.getenv("AUTOATTACK_TOOL_RUNTIME", "host")),
+        tool_runtime_note=effective.get("tool_runtime_note", os.getenv("AUTOATTACK_TOOL_RUNTIME_NOTE", "")),
         skills_dir=effective.get("skills_dir", ""),
         skillset_sha256=effective.get("skillset_sha256", ""),
         headers=[],
@@ -3620,6 +3636,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--queue-backend", choices=["sqlite", "redis"], default="sqlite", help="distributed queue backend")
     run.add_argument("--redis-url", default=os.getenv("AUTOATTACK_REDIS_URL", "redis://127.0.0.1:6379/0"))
     run.add_argument("--queue-name", default="", help="override distributed queue name")
+    run.add_argument("--tool-runtime", choices=["host", "privileged-docker"], default=os.getenv("AUTOATTACK_TOOL_RUNTIME", "host"), help="where external tools run; recorded in manifest and AI planner context")
+    run.add_argument("--tool-runtime-note", default=os.getenv("AUTOATTACK_TOOL_RUNTIME_NOTE", ""), help="extra runtime hint for AI planner context")
     run.add_argument("--resume", action="store_true", help="reuse cached external tool command results in the workspace DB")
     run.add_argument("--retry-failed", type=int, default=0)
     run.add_argument("--approve-intrusive", action="store_true", help="approve policy-enabled intrusive tools")

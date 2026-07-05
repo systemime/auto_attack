@@ -222,10 +222,13 @@ AI planner：
 OPENAI_API_KEY=... python3 autoattack_agent.py run example.com \
   --policy policy.json \
   --workspace runs/ai \
-  --ai-planner
+  --ai-planner \
+  --tool-runtime privileged-docker
 ```
 
-LLM prompt 会包含当前 blackboard 的 observations/findings 摘要。输出只接受 `{"tasks":[{"target":"...","skill":"...","reason":"...","risk":"..."}]}`，仍会经 scope/policy/router/approval。
+LLM prompt 会包含当前 blackboard 的 observations/findings 摘要，以及 `--tool-runtime` 运行时上下文。输出只接受 `{"tasks":[{"target":"...","skill":"...","reason":"...","risk":"..."}]}`，仍会经 scope/policy/router/approval；模型不能直接提交 shell command。
+
+JSON 兜底机制：prompt/system message 要求 JSON-only；返回后先 `json.loads()`，失败时只抽取第一段 `{...}` 再解析；解析后必须是 object 且含 `tasks` list；每个 task 的 `skill` 必须来自当前可用 skill candidates，target 仍经 scope/policy/router/approval。解析失败、字段不符、skill 不在候选集都会记录事件并返回空计划，因此最坏结果是“不新增 AI 计划”，不是执行模型幻觉命令。这是轻量生产可用的 guardrail，但不是 OpenAI Structured Outputs / JSON schema constrained decoding 级别；需要强 schema 保证时应升级到 Responses/Chat JSON schema。
 
 ## HTTP Header/Cookie 与 HAR 证据
 
@@ -273,6 +276,33 @@ docker run --rm -v "$PWD/runs:/runs" autoattack-agent run 127.0.0.1 \
   --policy /runs/policy.json --workspace /runs/local \
   --profile quick --rounds 1 --max-steps 0 --timeout 1
 ```
+
+Linux/Kali/Ubuntu 宿主级工具箱模式：如果希望容器内工具接近宿主机安装效果，使用特权容器、host network 和明确挂载。建议至少挂载当前项目、`runs`、宿主根目录只读或按需读写；宿主根目录在容器内使用 `/host` 访问。
+
+```bash
+mkdir -p runs
+docker run --rm -it \
+  --user 0:0 \
+  --privileged \
+  --network host \
+  --pid host \
+  --ipc host \
+  --cgroupns host \
+  --security-opt seccomp=unconfined \
+  --security-opt apparmor=unconfined \
+  -v "$PWD:$PWD" \
+  -v "$PWD/runs:/runs" \
+  -v /:/host \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -w "$PWD" \
+  autoattack-agent run 127.0.0.1 \
+    --policy /runs/policy.json \
+    --workspace /runs/host-power \
+    --profile deep \
+    --tool-runtime privileged-docker
+```
+
+`--tool-runtime privileged-docker` 会写入 `run.json` 的 `effective_args.tool_runtime`，并进入 AI planner prompt，让模型知道候选工具实际在具备 host network/privileged/mounts 的 Linux Docker 工具箱中运行。当前 agent 仍只允许模型选择 skill，不允许模型直接生成 shell command；具体命令由内置 tool builder/profile 生成。
 
 Redis 分布式 Docker 最短路径：
 
