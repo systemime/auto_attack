@@ -270,6 +270,43 @@ class AutoAttackTests(unittest.TestCase):
             self.assertIn("- Reason: rule:scan:deep", text)
             self.assertIn("- Reproduce: rerun the command", text)
 
+    def test_deep_profile_summary_console_and_rich_parsers(self):
+        target = aa.normalize_target("https://example.com/?id=1")
+        reg = aa.ToolRegistry()
+        nuclei = reg.get("nuclei")
+        sqlmap = reg.get("sqlmap")
+        self.assertIn("-severity", aa._profile_command(nuclei, nuclei.build(target, Path(".")), argparse.Namespace(profile="deep")))
+        sql_cmd = aa._profile_command(sqlmap, sqlmap.build(target, Path(".")), argparse.Namespace(profile="deep"))
+        self.assertEqual(sql_cmd[sql_cmd.index("--level") + 1], "3")
+        self.assertEqual(sql_cmd[sql_cmd.index("--risk") + 1], "2")
+
+        nuclei_out = json.dumps({"template-id": "cve-x", "template-path": "tpl.yaml", "matcher-name": "body", "extracted-results": ["leak"], "info": {"name": "CVE test", "severity": "critical", "classification": {"cve-id": ["CVE-1"], "cwe-id": ["CWE-79"]}, "reference": ["https://ref"]}, "matched-at": "https://example.com/a"}) + "\n"
+        _, findings = aa._parse_nuclei(aa.CommandResult("nuclei", target.raw, [], 0, nuclei_out, "", 0, "raw.txt"))
+        self.assertEqual(findings[0].severity, "critical")
+        self.assertIn("extracted-results", findings[0].evidence)
+        self.assertEqual(findings[0].cve, "CVE-1")
+
+        sql_out = "parameter 'id' is vulnerable\nback-end DBMS: PostgreSQL\nPayload: id=1 OR 1=1"
+        _, findings = aa._parse_sqlmap(aa.CommandResult("sqlmap", target.raw, [], 0, sql_out, "", 0, "raw.txt"))
+        self.assertEqual(findings[0].validation_status, "validated")
+        self.assertIn("PostgreSQL", findings[0].evidence)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            store = aa.Store(workspace / "state.sqlite3")
+            store.add_observation(aa.Observation("httpx", target.raw, "http", {"url": target.raw, "title": "x"}))
+            store.add_finding(aa.Finding("CVE test", "critical", target.raw, "e", "nuclei"))
+            store.add_task("scan", target.raw, "nuclei", "done")
+            summary = aa.summary_payload(workspace, store)
+            self.assertTrue(summary["coverage"]["http_fingerprint"])
+            self.assertTrue(summary["coverage"]["template_scan"])
+            html = aa.render_console(workspace)
+            self.assertIn("Dashboard", html)
+            self.assertIn("pause refresh", html)
+            self.assertIn("/api/summary", html)
+            aa.write_report(workspace, store, [target], argparse.Namespace(profile="deep", allow_intrusive=True, max_steps=1), formats={"md"})
+            self.assertIn("## Coverage matrix", (workspace / "report.md").read_text())
+
     def test_web_host_guard_and_no_store_headers(self):
         with tempfile.TemporaryDirectory() as tmp:
             proc = subprocess.Popen([sys.executable, str(ROOT / "autoattack_agent.py"), "web", tmp, "--host", "127.0.0.1", "--port", "0"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

@@ -51,14 +51,14 @@ Reporter（MD / JSON / SARIF，可选 LLM 总结）
 | Builtin recon | 必须 | DNS、端口、HTTP 指纹、安全头 | subfinder/amass/nuclei | 已实现 |
 | Tool registry | 必须 | 外部工具可发现、可过滤、可解析 | Pentest-Swarm-AI/Strix | 已实现 |
 | External tools | 必须 | subfinder/amass/nmap/httpx/nuclei/sqlmap/zap 等 | 各项目 | 已适配，按 PATH 自动启用 |
-| Parser/Analyst | 必须 | nmap/nuclei/sqlmap/nikto/httpx 结果转 findings | nuclei/sqlmap | 已实现基础 parser |
+| Parser/Analyst | 必须 | nmap/nuclei/sqlmap/nikto/httpx 结果转 findings | nuclei/sqlmap | 已实现增强 parser：nuclei 元数据、sqlmap DBMS/payload、httpx 技术栈 |
 | Report | 必须 | MD + JSON + raw evidence | Shannon/Strix/Caldera | 已实现 |
 | Dedupe | 必须 | observation/finding digest 去重 | nuclei/sqlmap | 已实现 |
 | Intrusive gate | 必须 | 高侵入工具显式开关 | Shannon/Strix | 已实现 `--allow-intrusive` |
 | Resume | 应该 | 复用 SQLite/已完成 tasks 跳过重复 | nuclei/sqlmap | 已实现外部命令缓存 `--resume` |
 | Sandbox | 应该 | Docker/Kali workspace、代理、文件隔离 | Shannon/Strix/airecon | 未内置；可外部用 Docker 跑 |
 | SARIF | 应该 | CI/ASPM 消费 | Strix/Pentest-Swarm-AI | 已实现基础 SARIF |
-| Web UI/TUI | 可选 | 任务进度、图谱、报告 | Strix/LuaN1ao/Caldera | 未实现 |
+| Web UI/TUI | 可选 | 任务进度、覆盖矩阵、发现详情、报告 | Strix/LuaN1ao/Caldera | 已实现轻量 Web dashboard；未做重平台/图谱 |
 | Multi-agent swarm | 可选 | 黑板订阅式 agent 并发 | Pentest-Swarm-AI | 已实现 SQLite job queue + `worker`，兼容单机/共享盘小集群 |
 | LLM planner | 可选 | 让模型从 observations 选择下一步 | watchtower/PentestGPT | 已实现受控 JSON `--ai-planner`，仍经 scope/policy/router |
 | Template authoring | 可选 | 自定义 YAML checks | nuclei/Nettacker | 复用 nuclei，不重造 |

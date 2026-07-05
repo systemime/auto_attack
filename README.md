@@ -24,7 +24,7 @@
 | Resume：command digest cache，失败可重试 | 已实现 |
 | Evidence：raw output、command digest、confidence、first/last seen | 已实现 |
 | 报告：Markdown / findings JSON / observations JSON / SARIF / events JSONL | 已实现 |
-| Web 控制台：状态/发现/任务/jobs/approval 少量干预 | 已实现 |
+| Web 控制台：dashboard、覆盖矩阵、发现详情、过滤、jobs/approval 干预 | 已实现 |
 | Web 证据：auth header/cookie、katana URL crawl、HAR 导入 | 已实现基础能力 |
 | Docker：非 root、固定 ProjectDiscovery release URL、SHA256 校验 | 已实现 |
 
@@ -314,7 +314,7 @@ docker run --rm autoattack-agent selftest
 - 借鉴 osmedeus/caldera：operation/task 状态与 artifact/report。
 - 借鉴 AutoCVE：skills 管理、多 Agent 审计链路、漏洞管理、CVE 报告工作流、产品化 UI/后端分层。
 
-当前绝对优势是：单文件可审计、零强依赖、单机/Redis queue 双模式、Docker checksum、CLI 生产闭环。基本持平的是：PentestGPT/watchtower 的最小 agent loop、LuaN1aoAgent/airecon 的 SQLite 状态思路、轻量 skills/router/approval 闭环。仍明显落后的是：nuclei/sqlmap 的专业检测深度、amass/subfinder 的 provider 生态、Strix/Shannon 的强 sandbox、Pentest-Swarm-AI 的 Postgres 级 swarm blackboard、AutoCVE 的源码审计/漏洞管理/CVE 报告链路。
+当前绝对优势是：单文件可审计、零强依赖、单机/Redis queue 双模式、Docker checksum、CLI 生产闭环。基本持平的是：PentestGPT/watchtower 的最小 agent loop、LuaN1aoAgent/airecon 的 SQLite 状态思路、轻量 skills/router/approval 闭环。专项深度已通过 deep profile、nuclei/sqlmap/httpx/katana/nmap 参数增强、parser 证据归因和覆盖矩阵提升到 8 分档；产品体验通过 Web dashboard、发现详情、过滤、暂停刷新和 `/api/summary` 提升到 6+ 分档。仍明显落后的是：amass/subfinder 的 provider 生态、Strix/Shannon 的强 sandbox、Pentest-Swarm-AI 的 Postgres 级 swarm blackboard、AutoCVE 的源码审计/漏洞管理/CVE 报告链路。
 
 ### 参考项目横向定位
 
@@ -324,8 +324,8 @@ docker run --rm autoattack-agent selftest
 | LuaN1aoAgent / airecon | SQLite blackboard 和任务状态思路基本持平；DAG/反思/沙箱弱。 |
 | Pentest-Swarm-AI | 轻量 queue 只算兼容；Postgres blackboard、cursor、swarm 调度明显落后。 |
 | Strix / Shannon | 报告与 guardrail 有基础；强 sandbox、企业流程明显落后。 |
-| nuclei / nuclei-templates | 只作为编排器调用；检测引擎、模板生态、matcher/extractor 明显落后。 |
-| sqlmap | 只做轻量调用和解析；SQLi 验证/利用/恢复状态机明显落后。 |
-| subfinder / amass | 只做工具接入；provider/rate limit/资产图谱明显落后。 |
+| nuclei / nuclei-templates | 仍复用外部引擎；deep profile、模板元数据解析、matcher/extractor 证据归因已补强。 |
+| sqlmap | deep profile 提升到 `level=3/risk=2` 且仍走 intrusive approval；解析补齐 DBMS/payload/parameter。 |
+| subfinder / amass | 仍不重造 provider 生态；作为 recon 组件进入覆盖矩阵和证据链。 |
 | Nettacker / osmedeus / Caldera | CLI 编排有基础；Web/API/workflow/operation 状态机明显落后。 |
 | AutoCVE | 黑盒 CLI/审计边界更轻更可控；源码审计、漏洞/CVE 管理、multi-agent 审计链路明显落后。 |

@@ -1825,6 +1825,7 @@ class Agent:
                         skill_name = pair[3] if len(pair) > 3 else tool.name
                         cmd = tool.build(target, self.raw_dir)
                         if cmd:
+                            cmd = _profile_command(tool, cmd, self.args)
                             job_id = self.store.enqueue_job(tool, target, cmd, reason, skill=skill_name)
                             self.store.add_task(tool.phase, target.raw, tool.name, "queued", f"job={job_id} {reason}")
                             self.store.add_skill_run(skill_name, target.raw, "queued", tool.name, _digest(cmd), reason)
@@ -1970,11 +1971,52 @@ class Agent:
             return f"LLM summary unavailable: {exc}"
 
 
+def _set_option(cmd: list[str], flag: str, value: str) -> list[str]:
+    out = list(cmd)
+    if flag in out and out.index(flag) + 1 < len(out):
+        out[out.index(flag) + 1] = value
+    elif flag not in out:
+        out += [flag, value]
+    return out
+
+
+def _add_flag(cmd: list[str], flag: str, value: str = "") -> list[str]:
+    out = list(cmd)
+    if flag not in out:
+        out.append(flag)
+        if value:
+            out.append(value)
+    return out
+
+
+def _profile_command(tool: ToolSpec, command: list[str], args: argparse.Namespace) -> list[str]:
+    cmd = list(command)
+    if getattr(args, "profile", "standard") != "deep":
+        return cmd
+    if tool.name == "nuclei":
+        for flag, value in (("-severity", "critical,high,medium,low,info"), ("-retries", "1"), ("-rl", "50")):
+            cmd = _set_option(cmd, flag, value)
+    elif tool.name == "sqlmap":
+        for flag, value in (("--level", "3"), ("--risk", "2"), ("--threads", "2")):
+            cmd = _set_option(cmd, flag, value)
+    elif tool.name == "nmap":
+        cmd = _set_option(cmd, "--top-ports", "1000")
+        cmd = _add_flag(cmd, "--version-all")
+    elif tool.name == "httpx":
+        for flag in ("-tech-detect", "-title", "-status-code", "-content-length", "-web-server"):
+            cmd = _add_flag(cmd, flag)
+    elif tool.name == "katana":
+        for flag, value in (("-depth", "2"), ("-known-files", "all")):
+            cmd = _set_option(cmd, flag, value)
+    return cmd
+
+
 def execute_tool_job(store: Store, registry: ToolRegistry, scope: Scope, raw_dir: Path, args: argparse.Namespace, tool: ToolSpec, target: Target, reason: str = "", command: list[str] | None = None, skill_name: str = "") -> tuple[str, str]:
     skill_name = skill_name or tool.name
     cmd = command or tool.build(target, raw_dir)
     if not cmd:
         return "skipped", ""
+    cmd = _profile_command(tool, cmd, args)
     digest = _digest(cmd)
     if not scope.allowed(target):
         store.add_task(tool.phase, target.raw, tool.name, "skipped", "out of scope or denied")
@@ -2359,8 +2401,14 @@ def _parse_httpx(r: CommandResult) -> tuple[list[Observation], list[Finding]]:
             item = json.loads(line)
             url = item.get("url") or item.get("input") or r.target
             obs.append(Observation("httpx", r.target, "http", item))
-            if item.get("webserver"):
-                findings.append(Finding("Web technology fingerprint", "info", url, str(item.get("webserver")), "httpx", confidence="medium"))
+            tech = item.get("tech") or item.get("technologies") or []
+            if isinstance(tech, str):
+                tech = [tech]
+            evidence = {k: item.get(k) for k in ("status-code", "status_code", "title", "webserver", "cdn", "content-length") if item.get(k)}
+            if tech:
+                evidence["tech"] = tech
+            if evidence:
+                findings.append(Finding("Web technology fingerprint", "info", url, json.dumps(evidence, ensure_ascii=False), "httpx", confidence="medium", validation_status="tool-reported"))
     return obs, findings
 
 
@@ -2371,7 +2419,7 @@ def _parse_katana(r: CommandResult) -> tuple[list[Observation], list[Finding]]:
             item = json.loads(line)
             url = item.get("url") or item.get("request", {}).get("endpoint")
             if url:
-                obs.append(Observation("katana", r.target, "url", {"url": url, "source": item.get("source", "")}))
+                obs.append(Observation("katana", r.target, "url", {"url": url, "source": item.get("source", ""), "tag": item.get("tag", ""), "method": item.get("method", "")}))
     return obs, []
 
 
@@ -2385,7 +2433,7 @@ def _parse_nuclei(r: CommandResult) -> tuple[list[Observation], list[Finding]]:
             sev = str(info.get("severity", "info")).lower()
             title = info.get("name") or item.get("template-id") or "Nuclei finding"
             target = item.get("matched-at") or item.get("host") or r.target
-            evidence = json.dumps({k: item.get(k) for k in ("template-id", "type", "matcher-name", "curl-command") if item.get(k)}, ensure_ascii=False)
+            evidence = json.dumps({k: item.get(k) for k in ("template-id", "template-path", "type", "matcher-name", "matched-at", "extracted-results", "curl-command", "ip", "host") if item.get(k)}, ensure_ascii=False)
             classification = info.get("classification", {}) if isinstance(info, dict) else {}
             cve = classification.get("cve-id", "") if isinstance(classification, dict) else ""
             cwe = classification.get("cwe-id", "") if isinstance(classification, dict) else ""
@@ -2409,7 +2457,11 @@ def _parse_sqlmap(r: CommandResult) -> tuple[list[Observation], list[Finding]]:
     text = r.stdout + "\n" + r.stderr
     findings = []
     if re.search(r"is vulnerable|parameter '.+?' is vulnerable|sqlmap identified", text, re.I):
-        findings.append(Finding("SQL injection validated", "high", r.target, _grep(text, r"(?i)(parameter .{0,160}vulnerable|sqlmap identified.{0,160})"), "sqlmap", "Fix the parameterized query and retest.", confidence="high"))
+        param = _grep(text, r"(?i)(parameter ['\"`]?[^'\"`\n]+['\"`]?.{0,160}vulnerable|sqlmap identified.{0,160})")
+        dbms = _grep(text, r"(?i)back-end DBMS[^\n]{0,160}")
+        payload = _grep(text, r"(?i)(payload:|Type:|Title:).{0,500}")
+        evidence = "\n".join(x for x in (param, dbms, payload) if x)
+        findings.append(Finding("SQL injection validated", "high", r.target, evidence or param, "sqlmap", "Fix the parameterized query and retest.", confidence="high", validation_status="validated"))
     return [Observation("sqlmap", r.target, "text", {"output_file": r.output_file, "returncode": r.returncode})], findings
 
 
@@ -2460,6 +2512,14 @@ def _render_report(targets: Sequence[Target], findings: list[dict], observations
     counts: dict[str, int] = {}
     for f in findings:
         counts[str(f["severity"]).lower()] = counts.get(str(f["severity"]).lower(), 0) + 1
+    coverage = {
+        "Recon": any(o["kind"] in {"dns", "host", "open_port", "url"} or o["source"] in {"subfinder", "amass", "katana"} for o in observations),
+        "HTTP fingerprint": any(o["kind"] == "http" or o["source"] in {"httpx", "whatweb"} for o in observations),
+        "Template scan": any(f["source"] == "nuclei" for f in findings),
+        "SQLi validation": any(f["source"] == "sqlmap" for f in findings),
+        "Exposure checks": any("exposed" in str(f["title"]).lower() or "exposure" in str(f["evidence"]).lower() for f in findings),
+        "Intrusive gate": bool(getattr(args, "allow_intrusive", False)),
+    }
     lines = [
         "# AutoAttack Agent Report",
         "",
@@ -2470,6 +2530,12 @@ def _render_report(targets: Sequence[Target], findings: list[dict], observations
         "## Summary",
         "",
         ", ".join(f"{k}: {v}" for k, v in sorted(counts.items())) or "No findings.",
+        "",
+        "## Coverage matrix",
+        "",
+        "| Area | Status |",
+        "|---|---|",
+        *[f"| {k} | {'covered' if v else 'gap'} |" for k, v in coverage.items()],
         "",
     ]
     if llm_summary:
@@ -2566,6 +2632,33 @@ def _refs_from_db(value: object) -> list[str]:
         if isinstance(data, list):
             return [str(x) for x in data if x]
     return [str(value)]
+
+
+def summary_payload(workspace: Path, store: Store | None = None) -> dict:
+    store = store or Store(workspace / "state.sqlite3")
+    findings = [dict(r) for r in store.rows("findings")]
+    tasks = [dict(r) for r in store.rows("tasks")]
+    jobs = [dict(r) for r in store.rows("job_queue")]
+    approvals = [dict(r) for r in store.rows("approval_requests")]
+    observations = [dict(r) for r in store.rows("observations")]
+    tool_runs = [dict(r) for r in store.rows("tool_runs")]
+    coverage = {
+        "recon": any(o["kind"] in {"dns", "host", "open_port", "url"} or o["source"] in {"subfinder", "amass", "katana"} for o in observations),
+        "http_fingerprint": any(o["kind"] == "http" or o["source"] in {"httpx", "whatweb"} for o in observations),
+        "template_scan": any(r["tool"] == "nuclei" for r in tool_runs) or any(f["source"] == "nuclei" for f in findings),
+        "sqli_validation": any(r["tool"] == "sqlmap" for r in tool_runs) or any(f["source"] == "sqlmap" for f in findings),
+        "exposure_checks": any("exposed" in str(f["title"]).lower() or "exposure" in str(f["evidence"]).lower() for f in findings),
+        "intrusive_gated": any(a["kind"] == "intrusive" for a in approvals) or any(t["status"] == "pending_approval" for t in tasks),
+    }
+    return {
+        "severity": dict(Counter(str(f["severity"]).lower() for f in findings)),
+        "tasks": dict(Counter(str(t["status"]) for t in tasks)),
+        "jobs": dict(Counter(str(j["status"]) for j in jobs)),
+        "approvals": dict(Counter(str(a["status"]) for a in approvals)),
+        "tools": dict(Counter(str(r["tool"]) for r in tool_runs)),
+        "coverage": coverage,
+        "recent_events": [dict(r) for r in store.rows("events", 8, recent=True)],
+    }
 
 
 def ai_skill_candidates(targets: Sequence[Target], skills: SkillRegistry, args: argparse.Namespace, policy: Policy | None, limit: int = 30) -> list[dict]:
@@ -3051,6 +3144,8 @@ def api_payload(workspace: Path, name: str, query: str = "") -> object:
     store = Store(workspace / "state.sqlite3")
     if name == "status":
         return status_payload(workspace)
+    if name == "summary":
+        return summary_payload(workspace, store)
     if name == "skill_stats":
         return skill_stats(store)
     if name in {"findings", "tasks", "events", "job_queue", "approval_requests", "skill_runs", "tool_runs"}:
@@ -3065,6 +3160,7 @@ def api_payload(workspace: Path, name: str, query: str = "") -> object:
 def render_console(workspace: Path) -> str:
     status = status_payload(workspace)
     store = Store(workspace / "state.sqlite3")
+    summary = summary_payload(workspace, store)
     findings = [dict(r) for r in store.rows("findings", 20, recent=True)]
     jobs = [dict(r) for r in store.rows("job_queue", 20, recent=True)]
     approvals = [dict(r) for r in store.rows("approval_requests", 20, recent=True)]
@@ -3075,9 +3171,34 @@ def render_console(workspace: Path) -> str:
     def table(rows: list[dict], cols: list[str]) -> str:
         body = "".join("<tr>" + "".join(f"<td>{r.get(c, '') if c == 'action' else esc(r.get(c, ''))}</td>" for c in cols) + "</tr>" for r in rows)
         head = "".join(f"<th>{esc(c)}</th>" for c in cols)
-        return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+        return f"<table class='filterable'><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+    def chips(items: dict) -> str:
+        return " ".join(f"<span class='chip'>{esc(k)}: {esc(v)}</span>" for k, v in sorted(items.items())) or "<span class='chip'>none</span>"
+    def coverage_cards() -> str:
+        labels = {"recon": "Recon", "http_fingerprint": "HTTP 指纹", "template_scan": "模板扫描", "sqli_validation": "SQLi 验证", "exposure_checks": "暴露检查", "intrusive_gated": "侵入门控"}
+        return "".join(f"<div class='card'><b>{esc(labels.get(k, k))}</b><br><span class='sev {'ok' if v else 'miss'}'>{'done' if v else 'gap'}</span></div>" for k, v in summary["coverage"].items())
+    def finding_details() -> str:
+        if not findings:
+            return "<p>No findings.</p>"
+        out = []
+        for f in findings:
+            blob = " ".join(str(f.get(k, "")) for k in ("severity", "title", "target", "source", "confidence", "validation_status", "evidence"))
+            raw_link = f"<p><a href='file://{esc(f.get('evidence_path',''))}'>raw evidence</a></p>" if f.get("evidence_path") else ""
+            out.append(
+                f"<details class='finding' data-filter='{esc(blob).lower()}'>"
+                f"<summary><span class='sev {esc(str(f.get('severity','info')).lower())}'>{esc(f.get('severity',''))}</span> "
+                f"{esc(f.get('title',''))} <code>{esc(f.get('target',''))}</code></summary>"
+                f"<p><b>Source:</b> {esc(f.get('source',''))} · <b>Confidence:</b> {esc(f.get('confidence',''))} · <b>Validation:</b> {esc(f.get('validation_status',''))}</p>"
+                f"<pre>{esc(f.get('evidence',''))}</pre>"
+                f"{raw_link}"
+                "</details>"
+            )
+        return "".join(out)
     approval_rows = []
     registry = ToolRegistry()
+    preview_args = argparse.Namespace(profile="standard")
+    with contextlib.suppress(Exception):
+        preview_args.profile = load_manifest(workspace).get("effective_args", {}).get("profile", "standard")
     for r in approvals:
         action = ""
         if r.get("status") == "pending":
@@ -3088,33 +3209,46 @@ def render_console(workspace: Path) -> str:
         with contextlib.suppress(Exception):
             tool = registry.get(str(r.get("tool") or ""))
             target = normalize_target(str(r.get("target") or ""))
-            rr["command"] = shlex.join(tool.build(target, workspace / "raw") or []) if tool else ""
+            cmd = tool.build(target, workspace / "raw") if tool else None
+            rr["command"] = shlex.join(_profile_command(tool, cmd, preview_args)) if tool and cmd else ""
         approval_rows.append(rr)
     return f"""<!doctype html>
-<meta charset="utf-8"><meta http-equiv="refresh" content="10">
+<meta charset="utf-8"><meta id="refresh" http-equiv="refresh" content="10">
 <title>AutoAttack Console</title>
 <style>
 body{{font-family:system-ui,Arial,sans-serif;margin:24px;background:#0b1020;color:#e7eaf3}}
-a{{color:#8ab4ff}} .cards{{display:flex;gap:12px;flex-wrap:wrap}} .card{{background:#151b2e;padding:12px 16px;border-radius:10px}}
+a{{color:#8ab4ff}} .cards{{display:flex;gap:12px;flex-wrap:wrap}} .card{{background:#151b2e;padding:12px 16px;border-radius:10px;min-width:130px}}
 table{{width:100%;border-collapse:collapse;margin:10px 0 24px;background:#11172a}} th,td{{border-bottom:1px solid #2b3450;padding:6px;text-align:left;vertical-align:top}} th{{color:#9db2ff}}
-button{{margin:2px;padding:4px 8px}} code{{color:#ffd479}}
+button,input,select{{margin:2px;padding:5px 8px}} code{{color:#ffd479}} pre{{white-space:pre-wrap;background:#0b1020;padding:8px;border-radius:8px}}
+.chip{{display:inline-block;background:#202947;border-radius:999px;padding:3px 8px;margin:2px}} .sev{{border-radius:999px;padding:2px 7px;background:#334;color:#fff}} .critical,.high{{background:#a83232}} .medium{{background:#a66a20}} .low{{background:#3b6ea8}} .info,.ok{{background:#286b42}} .miss{{background:#5f6675}} details.finding{{background:#11172a;border:1px solid #2b3450;border-radius:10px;margin:8px 0;padding:8px}}
 </style>
 <h1>AutoAttack Console</h1>
-<p>Workspace: <code>{esc(workspace)}</code></p>
+<p>Workspace: <code>{esc(workspace)}</code> <button onclick="document.getElementById('refresh')?.remove()">pause refresh</button> <input id="q" placeholder="filter tables/findings" oninput="filterAll(this.value)"></p>
 <div class="cards">
 {''.join(f"<div class='card'><b>{esc(k)}</b><br>{esc(v)}</div>" for k,v in status.items() if k not in {'tasks','job_queue'})}
 <div class='card'><b>tasks</b><br>{esc(status.get('tasks'))}</div>
 <div class='card'><b>job_queue</b><br>{esc(status.get('job_queue'))}</div>
 </div>
-<p>JSON: <a href="/api/status">status</a> · <a href="/api/findings">findings</a> · <a href="/api/tasks">tasks</a> · <a href="/api/job_queue">jobs</a> · <a href="/api/events">events</a> · <a href="/api/skill_stats">skill_stats</a></p>
+<h2>Dashboard</h2>
+<div class="cards">
+<div class='card'><b>Severity</b><br>{chips(summary['severity'])}</div>
+<div class='card'><b>Tasks</b><br>{chips(summary['tasks'])}</div>
+<div class='card'><b>Jobs</b><br>{chips(summary['jobs'])}</div>
+<div class='card'><b>Approvals</b><br>{chips(summary['approvals'])}</div>
+</div>
+<h2>Coverage</h2><div class="cards">{coverage_cards()}</div>
+<p>JSON: <a href="/api/status">status</a> · <a href="/api/summary">summary</a> · <a href="/api/findings">findings</a> · <a href="/api/tasks">tasks</a> · <a href="/api/job_queue">jobs</a> · <a href="/api/events">events</a> · <a href="/api/skill_stats">skill_stats</a></p>
 <h2>Skill Stats</h2>
 <div class="cards"><div class='card'><b>skill_runs</b><br>{esc(skills['skill_runs']['total'])}</div><div class='card'><b>routing</b><br>{esc(skills['routing'])}</div></div>
 {table(skills['skill_runs']['top_skills'], ['skill','total','status'])}
 {table(skills['trend'], ['day','skill_runs','by_status'])}
 <h2>Approvals</h2>{table(approval_rows, ['id','status','target','skill','tool','risk','reason','command','action'])}
-<h2>Recent Findings</h2>{table(findings, ['id','severity','title','target','source','confidence','validation_status'])}
+<h2>Recent Findings</h2>{finding_details()}
 <h2>Recent Jobs</h2>{table(jobs, ['id','status','tool','target','attempts','lease_owner','detail'])}
 <h2>Recent Tasks</h2>{table(tasks, ['id','phase','tool','target','status','detail'])}
+<script>
+function filterAll(q){{q=(q||'').toLowerCase();document.querySelectorAll('tbody tr,.finding').forEach(e=>{{e.style.display=e.textContent.toLowerCase().includes(q)||e.dataset.filter?.includes(q)?'':'none'}})}}
+</script>
 """
 
 

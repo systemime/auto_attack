@@ -3,563 +3,665 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AutoAttack 与 repos 项目雷达对比</title>
+<title>AutoAttack 与 repos 项目 8 维雷达对比</title>
 <style>
 :root{--bg:#0b1020;--panel:#121936;--muted:#9aa8d8;--text:#eef2ff;--line:#2c3768;--blue:#67a7ff;--orange:#ffb86b}
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,-apple-system,Segoe UI,Arial,sans-serif}
-main{max-width:1320px;margin:auto;padding:28px} h1{font-size:28px;margin:0 0 8px} h2{margin:0 0 12px;font-size:19px} p{margin:8px 0} .muted{color:var(--muted)}
-.legend{display:flex;gap:16px;margin:16px 0 22px;flex-wrap:wrap} .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px} .b{background:var(--blue)} .o{background:var(--orange)}
-.gridwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px} .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 28px #0004}
-.chart{display:flex;justify-content:center;margin:4px 0 12px} svg{width:min(100%,310px);height:auto} .grid{fill:none;stroke:#34406f;stroke-width:.8} .axis{stroke:#34406f;stroke-width:.8} .label{fill:#c6d0ff;font-size:10px}
-.auto{fill:#67a7ff22;stroke:var(--blue);stroke-width:2} .other{fill:#ffb86b26;stroke:var(--orange);stroke-width:2}
-table{width:100%;border-collapse:collapse;margin:16px 0 26px;background:var(--panel);border-radius:12px;overflow:hidden} th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:top} th{color:#dbe4ff;background:#182149}
-.note{border-left:4px solid var(--blue);padding:8px 12px;background:#101936;border-radius:8px}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.58 system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+main{max-width:1440px;margin:auto;padding:28px} h1{font-size:30px;margin:0 0 8px} h2{margin:26px 0 12px;font-size:22px} h3{margin:0 0 10px;font-size:18px} p{margin:8px 0} .muted{color:var(--muted)}
+.note{border-left:4px solid var(--blue);padding:10px 13px;background:#101936;border-radius:8px} .legend{display:flex;gap:16px;margin:16px 0 22px;flex-wrap:wrap} .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px} .b{background:var(--blue)} .o{background:var(--orange)}
+.gridwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px} .card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 28px #0004}
+.chart{display:flex;justify-content:center;margin:4px 0 12px} svg{width:min(100%,520px);height:auto;overflow:visible} .mega{width:min(100%,860px)} .grid{fill:none;stroke:#34406f;stroke-width:.9} .axis{stroke:#34406f;stroke-width:.9} .label{fill:#d7defe;font-size:13px;font-weight:650}
+.auto{fill:#67a7ff26;stroke:var(--blue);stroke-width:2.8} table{width:100%;border-collapse:collapse;margin:14px 0 22px;background:var(--panel);border-radius:12px;overflow:hidden} th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:top} th{color:#dbe4ff;background:#182149}
+.mega-wrap{display:grid;grid-template-columns:minmax(520px,1fr) 360px;gap:16px;align-items:start} .mega-legend{display:flex;flex-wrap:wrap;gap:8px;background:#0f1730;border:1px solid var(--line);border-radius:12px;padding:12px} .mega-legend span{width:160px;color:#dbe4ff;border-radius:999px;padding:3px 6px;cursor:pointer} .mega-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}.mega-series{cursor:pointer;transition:.12s}.mega-wrap.is-hovering .mega-series{opacity:.08}.mega-wrap.is-hovering .mega-series.is-active{opacity:.96;stroke-width:4;filter:drop-shadow(0 0 8px currentColor)}.mega-legend span.is-active{background:#ffffff18;color:#fff}
+.analysis{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px} .analysis div{background:#0f1730;border:1px solid var(--line);border-radius:12px;padding:12px} .audit-list{margin:8px 0 0;padding-left:20px}.audit-list li{margin:6px 0}
+@media(max-width:900px){.mega-wrap{grid-template-columns:1fr} main{padding:18px} .gridwrap{grid-template-columns:1fr}}
 </style>
 </head>
-<body>
-<main>
-<h1>AutoAttack 与 repos 项目雷达对比</h1>
-<p class="muted">评分 0-10，基于本地 README/目录结构的快速对比；AutoAttack 基线固定为黑盒 DAST 编排、scope/policy/approval、SkillRouter、SQLite/Redis queue 与多格式报告。</p>
-<div class="legend"><span><i class="dot b"></i>AutoAttack</span><span><i class="dot o"></i>对比项目</span></div>
-<p class="note">Ponytail 版本：单文件、零外部依赖、内联 SVG。评分用于取舍方向，不是论文级 benchmark。</p>
-<h2>评分维度</h2>
-<table><thead><tr><th>维度</th><th>含义</th></tr></thead><tbody><tr><td>DAST闭环</td><td>黑盒侦察→验证→报告闭环</td></tr><tr><td>安全门控</td><td>scope/policy/approval/audit 控制</td></tr><tr><td>Agent编排</td><td>Planner/Router/Executor/Analyst 自动化</td></tr><tr><td>分布式</td><td>队列/worker/可恢复执行</td></tr><tr><td>知识资产</td><td>payload/playbook/template/checklist 等内容</td></tr><tr><td>专项深度</td><td>某一安全方向的成熟深度</td></tr></tbody></table>
-<h2>总览</h2>
-<table><thead><tr><th>项目</th><th>定位</th><th>对方优势</th><th>对方短板</th><th>结论</th></tr></thead><tbody><tr><td>Arsenal</td><td>本地离线 pentest/bug bounty 知识库与命令构建器。</td><td>Payload、GTFOBins、攻击链、清单、报告模板和搜索体验更强。</td><td>偏手工辅助，不做自动扫描/队列/审批/证据编排。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>LuaN1aoAgent</td><td>认知驱动的 LLM 自主渗透 Agent。</td><td>P-E-R、因果图谱、动态 DAG、RAG、HITL/Web 可视化更先进。</td><td>依赖和复杂度更高，安全执行/分布式队列不如 AutoAttack 简洁受控。</td><td>各有侧重</td></tr><tr><td>Nettacker</td><td>OWASP 自动化信息收集与漏洞评估框架。</td><td>多协议、多模块、Web/API、漂移检测、网络/IoT 覆盖成熟。</td><td>规则/模块扫描为主，缺少 AutoAttack 的 AI 计划、skill gate 与审批链。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>Pentest-Swarm-AI</td><td>Go 实现的蜂群式 AI 渗透平台。</td><td>黑板+pheromone、真实 swarm 设计、ProjectDiscovery 工具链、MCP/Action。</td><td>swarm/dashboard/Postgres 后端仍偏 alpha/beta，整体比 AutoAttack 重。</td><td>各有侧重</td></tr><tr><td>PentestGPT</td><td>研究导向的 AI 渗透/CTF Agent。</td><td>USENIX 背书、PTT/迭代上下文、CTF/benchmark 叙事强。</td><td>原生工具编排、scope/policy/证据库/分布式执行弱于 AutoAttack。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>agentic_security</td><td>LLM/Agent 工作流 jailbreak 与 fuzzing 扫描器。</td><td>LLM 安全、数据集、CI、多模态/多步攻击专项能力强。</td><td>不是通用 Web/网络 DAST，不覆盖 AutoAttack 的侦察-验证-报告链。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>airecon</td><td>本地 Ollama + Kali Docker 的离线 AI 渗透 Agent。</td><td>离线隐私、Caido 集成、Kali 沙箱、本地安全知识库/记忆很强。</td><td>硬件和模型要求高，阶段约束偏软，分布式/审批控制不如 AutoAttack。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>amass</td><td>OWASP 外部资产发现与攻击面映射工具。</td><td>子域/资产发现深度、数据源和网络图谱能力强。</td><td>只做 recon/ASM，不做漏洞验证、AI 编排和报告闭环。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>autocve</td><td>面向 CVE 挖掘的源码审计与报告平台。</td><td>白盒源码审计、CVE 报告、前后端平台、多 Agent 审计强。</td><td>目标不同：偏源码/CVE，不是 AutoAttack 的黑盒 DAST；部署更重。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>caldera</td><td>MITRE ATT&amp;CK 驱动的对手仿真/C2 平台。</td><td>ATT&amp;CK、插件、agent、红蓝演练和后渗透自动化成熟。</td><td>不是 Web 黑盒 DAST；操作风险和部署复杂度远高于 AutoAttack。</td><td>各有侧重</td></tr><tr><td>nuclei</td><td>高性能 YAML 模板漏洞扫描引擎。</td><td>模板生态、速度、多协议、CI 集成强，适合作为 AutoAttack skill。</td><td>单一扫描器，无 AI 规划、approval、blackboard/queue 编排。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>nuclei-templates</td><td>nuclei 的社区模板库。</td><td>覆盖面巨大，CVE/KEV/云/HTTP/DNS/代码模板丰富。</td><td>只是内容库，不能独立执行；依赖 nuclei 和外部编排。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>osmedeus</td><td>声明式安全工作流编排引擎。</td><td>YAML 工作流、分布式、云运行、事件调度、API/UI、SAST/SARIF 很全。</td><td>泛化且复杂，可执行任意工作流；不如 AutoAttack 默认受控和轻量。</td><td>各有侧重</td></tr><tr><td>pentestagent</td><td>TUI 驱动的 AI 渗透助手/多 Agent 工具。</td><td>Assist/Agent/Crew、浏览器/终端、MCP 自生成子 Agent、Kali Docker。</td><td>更像交互式通用 Agent，policy/approval/结构化证据和队列弱。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>shannon</td><td>源码感知的白盒 AI Web/API Pentester。</td><td>源码分析+真实 exploit 验证，报告只收可证明漏洞。</td><td>需要源码和 Docker；不适合纯黑盒外部资产场景。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>sqlmap</td><td>SQL 注入检测、利用和数据库接管专用工具。</td><td>SQLi 深度、tamper、DB 指纹/提权/文件/命令能力远强。</td><td>范围极窄且侵入性高；无 AutoAttack 的编排、审批和多工具报告。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>strix</td><td>面向应用的多 Agent AI pentest/修复工具。</td><td>SAST+DAST、PoC 验证、自动修复、CI/PR 集成、开发者体验强。</td><td>Docker/API/平台依赖更重，透明可审计和本地最小化不如 AutoAttack。</td><td>各有侧重</td></tr><tr><td>subfinder</td><td>ProjectDiscovery 被动子域枚举工具。</td><td>快、轻、stdout/JSON 友好，适合流水线集成。</td><td>只做子域发现，不能替代 AutoAttack 的漏洞验证和报告闭环。</td><td>AutoAttack 整体更均衡</td></tr><tr><td>watchtower</td><td>LangGraph 多 Agent 渗透自动化 CLI。</td><td>23 个工具包装、Planner/Worker/Analyst、SQLite 记忆、PDF 报告。</td><td>简化版 Agent 框架，分布式、approval、skill 路由和安全门控弱于 AutoAttack。</td><td>AutoAttack 整体更均衡</td></tr></tbody></table>
+<body><main>
+<h1>AutoAttack 与 repos 项目 8 维雷达对比</h1>
+<p class="muted">评分 0-10，基于本地 README/目录结构的工程判断。蓝色为 AutoAttack；各项目雷达图使用不同颜色。标签已放入更大 SVG 画布，避免“知识资产”等轴名被裁切。</p>
+<div class="legend"><span><i class="dot b"></i>AutoAttack</span><span><i class="dot o"></i>参考项目</span></div>
+<p class="note">核心结论：AutoAttack 综合强在受控黑盒 DAST 闭环、安全门控、轻量可审计和可恢复执行；参考项目多数在某一专项更深，适合“吸收能力”，不适合整体替换。</p>
+<section class="panel">
+<h2>代码重度审计快照（2026-07-05）</h2>
+<p>GitNexus 已使用 <code>analyze --pdg</code> 重建索引：3,045 nodes / 9,286 edges / 110 flows；CLI status 显示 up-to-date。审计覆盖新增 deep profile、parser、报告、Web console、summary API 与雷达页。</p>
+<ul class="audit-list">
+<li><b>安全数据流：</b>GitNexus taint explain 返回 0 条持久化 source→sink finding；命令执行均为 list argv 形式，无 <code>shell=True</code>。</li>
+<li><b>回归验证：</b><code>py_compile</code> 与 27 个 unittest 通过；新增测试覆盖 deep profile、rich parser、summary、console 与 coverage matrix。</li>
+<li><b>高影响路径：</b><code>_set_option → _profile_command → run/worker/web preview</code> 影响面为 CRITICAL；当前仅作为命令参数补强使用，不做重度 API/schema 改动。</li>
+<li><b>需跟踪边界：</b><code>_set_option()</code> 遇到“flag 已存在但缺 value”的手写坏命令会静默保留；现有内置 builder 不产生该形态，建议下次触碰命令构建时补 1 个单测和最小修复。</li>
+<li><b>Ponytail 结论：</b>本轮不引入新依赖、不拆单文件、不上前端框架；最大收益来自保留轻量内核并把专业深度交给 nuclei/sqlmap/httpx/katana/nmap 适配器。</li>
+</ul>
+</section>
+<h2>8 个比较点</h2>
+<table><thead><tr><th>#</th><th>维度</th><th>比较含义</th></tr></thead><tbody><tr><td>1</td><td>DAST闭环</td><td>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</td></tr><tr><td>2</td><td>安全门控</td><td>scope、policy、审批、审计、默认安全边界是否强</td></tr><tr><td>3</td><td>Agent编排</td><td>是否具备 planner/router/executor/analyst 的自动化协作能力</td></tr><tr><td>4</td><td>分布式执行</td><td>是否支持队列、worker、恢复、横向扩展和长任务治理</td></tr><tr><td>5</td><td>知识资产</td><td>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</td></tr><tr><td>6</td><td>专项深度</td><td>在某个安全子领域是否足够深入成熟</td></tr><tr><td>7</td><td>轻量可审计</td><td>依赖少、部署简单、代码路径短、便于离线审计</td></tr><tr><td>8</td><td>产品体验</td><td>Web/UI/API、可视化、交互式工作台、报告体验成熟度</td></tr></tbody></table>
+<h2>超级复合雷达图：所有项目同图比较</h2>
+<section class="panel"><div class="mega-wrap"><svg class="mega" viewBox="0 0 720 620" role="img" aria-label="所有项目8维复合雷达图"><polygon points="320.0,262.0 346.9,273.1 358.0,300.0 346.9,326.9 320.0,338.0 293.1,326.9 282.0,300.0 293.1,273.1" class="grid"/>
+<polygon points="320.0,224.0 373.7,246.3 396.0,300.0 373.7,353.7 320.0,376.0 266.3,353.7 244.0,300.0 266.3,246.3" class="grid"/>
+<polygon points="320.0,186.0 400.6,219.4 434.0,300.0 400.6,380.6 320.0,414.0 239.4,380.6 206.0,300.0 239.4,219.4" class="grid"/>
+<polygon points="320.0,148.0 427.5,192.5 472.0,300.0 427.5,407.5 320.0,452.0 212.5,407.5 168.0,300.0 212.5,192.5" class="grid"/>
+<polygon points="320.0,110.0 454.4,165.6 510.0,300.0 454.4,434.4 320.0,490.0 185.6,434.4 130.0,300.0 185.6,165.6" class="grid"/>
+<line x1="320" y1="300" x2="320.0" y2="110.0" class="axis"/>
+<text x="320.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="320" y1="300" x2="454.4" y2="165.6" class="axis"/>
+<text x="505.3" y="130.3" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="320" y1="300" x2="510.0" y2="300.0" class="axis"/>
+<text x="582.0" y="300.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="320" y1="300" x2="454.4" y2="434.4" class="axis"/>
+<text x="505.3" y="469.7" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="320" y1="300" x2="320.0" y2="490.0" class="axis"/>
+<text x="320.0" y="540.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="320" y1="300" x2="185.6" y2="434.4" class="axis"/>
+<text x="134.7" y="469.7" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="320" y1="300" x2="130.0" y2="300.0" class="axis"/>
+<text x="16.0" y="300.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="320" y1="300" x2="185.6" y2="165.6" class="axis"/>
+<text x="134.7" y="130.3" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text><polygon points="320.0,148.0 440.9,179.1 472.0,300.0 414.0,394.0 320.0,395.0 212.5,407.5 149.0,300.0 239.4,219.4" fill="#67a7ff30" stroke="#67a7ff" stroke-width="3.2" opacity="0.78"><title>AutoAttack</title></polygon><polygon points="320.0,262.0 360.3,259.7 358.0,300.0 333.4,313.4 320.0,490.0 239.4,380.6 206.0,300.0 212.5,192.5" fill="#ffb86b18" stroke="#ffb86b" stroke-width="1.6" opacity="0.42"><title>Arsenal</title></polygon><polygon points="320.0,186.0 387.2,232.8 491.0,300.0 373.7,353.7 320.0,452.0 226.0,394.0 244.0,300.0 212.5,192.5" fill="#8be9fd18" stroke="#8be9fd" stroke-width="1.6" opacity="0.42"><title>LuaN1aoAgent</title></polygon><polygon points="320.0,167.0 387.2,232.8 396.0,300.0 387.2,367.2 320.0,433.0 212.5,407.5 225.0,300.0 226.0,206.0" fill="#50fa7b18" stroke="#50fa7b" stroke-width="1.6" opacity="0.42"><title>Nettacker</title></polygon><polygon points="320.0,167.0 387.2,232.8 491.0,300.0 427.5,407.5 320.0,414.0 226.0,394.0 263.0,300.0 226.0,206.0" fill="#bd93f918" stroke="#bd93f9" stroke-width="1.6" opacity="0.42"><title>Pentest-Swarm-AI</title></polygon><polygon points="320.0,224.0 373.7,246.3 472.0,300.0 346.9,326.9 320.0,414.0 226.0,394.0 206.0,300.0 252.8,232.8" fill="#ff79c618" stroke="#ff79c6" stroke-width="1.6" opacity="0.42"><title>PentestGPT</title></polygon><polygon points="320.0,243.0 387.2,232.8 434.0,300.0 360.3,340.3 320.0,452.0 199.1,420.9 206.0,300.0 239.4,219.4" fill="#f1fa8c18" stroke="#f1fa8c" stroke-width="1.6" opacity="0.42"><title>agentic_security</title></polygon><polygon points="320.0,186.0 387.2,232.8 472.0,300.0 360.3,340.3 320.0,452.0 226.0,394.0 244.0,300.0 226.0,206.0" fill="#ff555518" stroke="#ff5555" stroke-width="1.6" opacity="0.42"><title>airecon</title></polygon><polygon points="320.0,224.0 373.7,246.3 358.0,300.0 373.7,353.7 320.0,433.0 185.6,434.4 187.0,300.0 266.3,246.3" fill="#9aedfe18" stroke="#9aedfe" stroke-width="1.6" opacity="0.42"><title>amass</title></polygon><polygon points="320.0,243.0 387.2,232.8 472.0,300.0 387.2,367.2 320.0,433.0 199.1,420.9 263.0,300.0 212.5,192.5" fill="#a4ff7a18" stroke="#a4ff7a" stroke-width="1.6" opacity="0.42"><title>autocve</title></polygon><polygon points="320.0,262.0 400.6,219.4 453.0,300.0 414.0,394.0 320.0,452.0 185.6,434.4 263.0,300.0 212.5,192.5" fill="#d6acff18" stroke="#d6acff" stroke-width="1.6" opacity="0.42"><title>caldera</title></polygon><polygon points="320.0,167.0 373.7,246.3 358.0,300.0 387.2,367.2 320.0,471.0 185.6,434.4 168.0,300.0 252.8,232.8" fill="#ff9ccf18" stroke="#ff9ccf" stroke-width="1.6" opacity="0.42"><title>nuclei</title></polygon><polygon points="320.0,262.0 360.3,259.7 339.0,300.0 333.4,313.4 320.0,490.0 199.1,420.9 168.0,300.0 279.7,259.7" fill="#fff59d18" stroke="#fff59d" stroke-width="1.6" opacity="0.42"><title>nuclei-templates</title></polygon><polygon points="320.0,167.0 387.2,232.8 434.0,300.0 440.9,420.9 320.0,452.0 212.5,407.5 263.0,300.0 212.5,192.5" fill="#ffa07a18" stroke="#ffa07a" stroke-width="1.6" opacity="0.42"><title>osmedeus</title></polygon><polygon points="320.0,205.0 373.7,246.3 472.0,300.0 360.3,340.3 320.0,414.0 226.0,394.0 225.0,300.0 226.0,206.0" fill="#7dd3fc18" stroke="#7dd3fc" stroke-width="1.6" opacity="0.42"><title>pentestagent</title></polygon><polygon points="320.0,205.0 387.2,232.8 472.0,300.0 360.3,340.3 320.0,414.0 199.1,420.9 244.0,300.0 239.4,219.4" fill="#c084fc18" stroke="#c084fc" stroke-width="1.6" opacity="0.42"><title>shannon</title></polygon><polygon points="320.0,205.0 360.3,259.7 339.0,300.0 346.9,326.9 320.0,395.0 185.6,434.4 168.0,300.0 266.3,246.3" fill="#fbbf2418" stroke="#fbbf24" stroke-width="1.6" opacity="0.42"><title>sqlmap</title></polygon><polygon points="320.0,167.0 387.2,232.8 491.0,300.0 387.2,367.2 320.0,433.0 199.1,420.9 263.0,300.0 212.5,192.5" fill="#34d39918" stroke="#34d399" stroke-width="1.6" opacity="0.42"><title>strix</title></polygon><polygon points="320.0,243.0 373.7,246.3 339.0,300.0 360.3,340.3 320.0,395.0 185.6,434.4 130.0,300.0 266.3,246.3" fill="#fb718518" stroke="#fb7185" stroke-width="1.6" opacity="0.42"><title>subfinder</title></polygon><polygon points="320.0,186.0 387.2,232.8 472.0,300.0 360.3,340.3 320.0,414.0 226.0,394.0 225.0,300.0 239.4,219.4" fill="#e5e7eb18" stroke="#e5e7eb" stroke-width="1.6" opacity="0.42"><title>watchtower</title></polygon></svg><div class="mega-legend"><span><i style="background:#67a7ff"></i>AutoAttack</span><span><i style="background:#ffb86b"></i>Arsenal</span><span><i style="background:#8be9fd"></i>LuaN1aoAgent</span><span><i style="background:#50fa7b"></i>Nettacker</span><span><i style="background:#bd93f9"></i>Pentest-Swarm-AI</span><span><i style="background:#ff79c6"></i>PentestGPT</span><span><i style="background:#f1fa8c"></i>agentic_security</span><span><i style="background:#ff5555"></i>airecon</span><span><i style="background:#9aedfe"></i>amass</span><span><i style="background:#a4ff7a"></i>autocve</span><span><i style="background:#d6acff"></i>caldera</span><span><i style="background:#ff9ccf"></i>nuclei</span><span><i style="background:#fff59d"></i>nuclei-templates</span><span><i style="background:#ffa07a"></i>osmedeus</span><span><i style="background:#7dd3fc"></i>pentestagent</span><span><i style="background:#c084fc"></i>shannon</span><span><i style="background:#fbbf24"></i>sqlmap</span><span><i style="background:#34d399"></i>strix</span><span><i style="background:#fb7185"></i>subfinder</span><span><i style="background:#e5e7eb"></i>watchtower</span></div></div></section>
+<h2>深度解析（8 个比较点）</h2>
+<section class="analysis">
+<div><b>1. DAST 闭环</b><p>AutoAttack 已形成侦察、指纹、扫描、验证、证据和报告闭环；nuclei、sqlmap、subfinder、amass 是更强的单点组件，适合接入为 skill，而不是替代主流程。</p></div>
+<div><b>2. 安全门控</b><p>AutoAttack 的 scope/policy/approval/audit 是当前最该保留的护城河；caldera、osmedeus、sqlmap 等能力更强但执行面更宽，默认不应绕过审批和范围约束。</p></div>
+<div><b>3. Agent 编排</b><p>LuaN1aoAgent、Pentest-Swarm-AI、PentestGPT、watchtower 在 planner/worker/analyst 叙事上更激进；AutoAttack 应吸收可解释路由和任务拆分，不必引入重型认知图谱。</p></div>
+<div><b>4. 分布式执行</b><p>osmedeus 与 Pentest-Swarm-AI 的工作流、worker、云端执行思想值得借鉴；AutoAttack 当前优势是 SQLite/Redis queue、resume 和轻量恢复，扩展时仍应保持任务状态可审计。</p></div>
+<div><b>5. 知识资产</b><p>Arsenal 与 nuclei-templates 的 payload、模板、checklist、命令片段是最可吸收资产；更适合转为 metadata、playbook 或只读知识索引，不建议复制大型内容库。</p></div>
+<div><b>6. 专项深度</b><p>sqlmap 的 SQLi、amass/subfinder 的资产发现、nuclei 的模板扫描、agentic_security 的 LLM 安全都明显更深；AutoAttack 应承认专项差距，并通过适配器组合它们。</p></div>
+<div><b>7. 轻量可审计</b><p>AutoAttack 相比 Strix、autocve、airecon、caldera 更轻，部署和审计路径更短；本轮以 deep profile、增强 parser、覆盖矩阵和轻量 dashboard 补强，仍避免引入完整平台或新前端状态模型。</p></div>
+<div><b>8. 产品体验</b><p>Arsenal、osmedeus、Strix、Nettacker 在 UI/API/报告体验上有参考价值；AutoAttack 已补 dashboard、过滤、发现详情、暂停刷新和 /api/summary，仍不重写成大型 Web 平台。</p></div>
+</section>
+<h2>项目总览与简单介绍</h2>
+<table><thead><tr><th>项目</th><th>总分</th><th>简单介绍</th><th>能力说明</th><th>深度解析</th><th>结论</th></tr></thead><tbody><tr><td>AutoAttack</td><td>60</td><td>本项目，黑盒 DAST / 自动化渗透编排核心。</td><td>以受控执行为中心：scope/policy/approval、SkillRouter、SQLite/Redis queue、blackboard 和多格式报告。</td><td>强在安全门控、轻量可审计、自动化闭环；deep profile、增强 parser 和轻量 dashboard 已补强专项深度与产品体验。</td><td>基线项目</td></tr><tr><td>Arsenal</td><td>38</td><td>离线 pentest/bug bounty 知识库和命令构建器。</td><td>把 payload、GTFOBins、攻击链、checklist、报告模板放进本地搜索工作台，适合人工检索、拼命令、记录 engagement。</td><td>知识资产和 UI 强；但它不负责自动执行、队列、审批、证据编排。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>LuaN1aoAgent</td><td>51</td><td>认知驱动的 LLM 自主渗透 Agent。</td><td>强调 P-E-R、因果图谱、动态 DAG、RAG 和 HITL 可视化，适合研究更复杂的 Agent 推理闭环。</td><td>Agent 思路先进；但依赖和复杂度高，执行安全边界不如 AutoAttack 清晰。</td><td>各有侧重</td></tr><tr><td>Nettacker</td><td>48</td><td>OWASP 自动化信息收集与漏洞评估框架。</td><td>多协议、多模块、Web/API 和网络/IoT 覆盖成熟，偏传统扫描框架。</td><td>扫描覆盖强；但 AI 计划、skill gate、审批和 blackboard 编排弱。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>Pentest-Swarm-AI</td><td>52</td><td>Go 实现的蜂群式 AI 渗透平台。</td><td>黑板、pheromone、swarm、多 agent 和 ProjectDiscovery 工具链组合较完整。</td><td>分布式/蜂群概念强；但系统重，alpha/beta 组件多，默认安全门控需谨慎。</td><td>各有侧重</td></tr><tr><td>PentestGPT</td><td>42</td><td>研究导向 AI 渗透 / CTF Agent。</td><td>PTT、迭代上下文和 benchmark 叙事强，适合研究 LLM 如何辅助渗透流程。</td><td>AI 交互强；但真实工具编排、证据库、分布式执行和 policy gate 不完整。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>agentic_security</td><td>46</td><td>LLM/Agent 工作流 jailbreak 与 fuzzing 扫描器。</td><td>专注 LLM 安全测试，数据集、CI、多模态、多步攻击场景更强。</td><td>LLM 安全专项深；但不是通用 Web/网络 DAST。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>airecon</td><td>48</td><td>本地 Ollama + Kali Docker 的离线 AI 渗透 Agent。</td><td>隐私、本地模型、Caido 集成、Kali 沙箱和本地安全知识库体验突出。</td><td>离线体验好；但硬件/模型要求高，分布式和审批控制偏弱。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>amass</td><td>42</td><td>OWASP 外部资产发现与攻击面映射工具。</td><td>子域、数据源、图谱和外部资产发现深度很强，是 recon/ASM 专项标杆。</td><td>ASM 深；但不做漏洞验证、AI 编排和报告闭环。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>autocve</td><td>48</td><td>面向 CVE 挖掘的源码审计与报告平台。</td><td>白盒源码审计、多 Agent 分析、CVE 报告、前后端平台化能力强。</td><td>白盒/CVE 强；但目标不是黑盒 DAST，部署和运行链路更重。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>caldera</td><td>51</td><td>MITRE ATT&amp;CK 驱动的对手仿真 / C2 平台。</td><td>ATT&amp;CK、插件、agent、红蓝演练和后渗透自动化成熟。</td><td>仿真/后渗透强；但不是 Web DAST，操作风险和复杂度高。</td><td>各有侧重</td></tr><tr><td>nuclei</td><td>50</td><td>高性能 YAML 模板漏洞扫描引擎。</td><td>模板生态、速度、多协议和 CI 集成极强，适合作为 AutoAttack 的底层 skill。</td><td>扫描引擎强；但不是完整 Agent 编排器。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>nuclei-templates</td><td>37</td><td>nuclei 社区模板库。</td><td>CVE、KEV、云、HTTP、DNS、代码模板覆盖广，是内容资产库。</td><td>知识资产强；但不能独立执行，依赖 nuclei 和外部编排。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>osmedeus</td><td>54</td><td>声明式安全工作流编排引擎。</td><td>YAML 工作流、分布式、云运行、事件调度、API/UI、SAST/SARIF 覆盖全面。</td><td>工作流能力强；但泛化复杂，可执行任意工作流，默认受控性不如 AutoAttack。</td><td>各有侧重</td></tr><tr><td>pentestagent</td><td>45</td><td>TUI 驱动 AI 渗透助手 / 多 Agent 工具。</td><td>Assist/Agent/Crew、浏览器/终端、MCP 自生成子 Agent 和 Kali Docker 适合交互式使用。</td><td>交互 Agent 强；但结构化证据、policy/approval 和队列弱。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>shannon</td><td>46</td><td>源码感知白盒 AI Web/API Pentester。</td><td>源码分析加真实 exploit 验证，强调只报告可证明漏洞。</td><td>白盒验证强；但需要源码和 Docker，不适合纯黑盒外部资产。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>sqlmap</td><td>38</td><td>SQL 注入检测、利用和数据库接管专用工具。</td><td>SQLi 深度、tamper、DB 指纹、提权、文件和命令能力远强。</td><td>SQLi 专项极深；但范围窄且侵入性高，需要外部编排和审批。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>strix</td><td>53</td><td>面向应用的多 Agent AI pentest / 修复工具。</td><td>SAST+DAST、PoC 验证、自动修复、CI/PR 集成和开发者体验突出。</td><td>全链路应用安全强；但 Docker/API/平台依赖重，轻量可审计性不如 AutoAttack。</td><td>各有侧重</td></tr><tr><td>subfinder</td><td>40</td><td>ProjectDiscovery 被动子域枚举工具。</td><td>快、轻、stdout/JSON 友好，适合作为流水线 recon 组件。</td><td>子域发现专项极强；但无法替代验证、报告和 Agent 编排。</td><td>AutoAttack 综合更均衡</td></tr><tr><td>watchtower</td><td>46</td><td>LangGraph 多 Agent 渗透自动化 CLI。</td><td>Planner/Worker/Analyst、23 个工具包装、SQLite 记忆和 PDF 报告组成简化 Agent 框架。</td><td>Agent 框架完整度不错；但分布式、approval、skill 路由和安全门控弱于 AutoAttack。</td><td>AutoAttack 综合更均衡</td></tr></tbody></table>
 <h2>逐项雷达图</h2>
-<div class="gridwrap">
-<section class="card">
-  <h2>Arsenal</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 Arsenal 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,107.4 147.9,111.8 140.2,133.8 125.0,133.8 48.8,169.0 79.3,98.6" class="other"/>
+<div class="gridwrap"><section class="card">
+<h3>Arsenal</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 Arsenal 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,214.0 287.6,212.4 286.0,240.0 269.2,249.2 260.0,370.0 204.8,295.2 182.0,240.0 186.5,166.5" fill="#ffb86b30" stroke="#ffb86b" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>本地离线 pentest/bug bounty 知识库与命令构建器。</p>
-  <p><b>对方优势：</b>Payload、GTFOBins、攻击链、清单、报告模板和搜索体验更强。</p>
-  <p><b>对方短板：</b>偏手工辅助，不做自动扫描/队列/审批/证据编排。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>LuaN1aoAgent</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 LuaN1aoAgent 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,72.2 163.1,103.0 193.6,164.6 125.0,160.2 64.0,160.2 71.7,94.2" class="other"/>
+<p><b>简单介绍：</b>离线 pentest/bug bounty 知识库和命令构建器。</p>
+<p><b>能力说明：</b>把 payload、GTFOBins、攻击链、checklist、报告模板放进本地搜索工作台，适合人工检索、拼命令、记录 engagement。</p>
+<p><b>深度解析：</b>知识资产和 UI 强；但它不负责自动执行、队列、审批、证据编排。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>LuaN1aoAgent</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 LuaN1aoAgent 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,162.0 306.0,194.0 377.0,240.0 296.8,276.8 260.0,344.0 195.7,304.3 208.0,240.0 186.5,166.5" fill="#8be9fd30" stroke="#8be9fd" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>认知驱动的 LLM 自主渗透 Agent。</p>
-  <p><b>对方优势：</b>P-E-R、因果图谱、动态 DAG、RAG、HITL/Web 可视化更先进。</p>
-  <p><b>对方短板：</b>依赖和复杂度更高，安全执行/分布式队列不如 AutoAttack 简洁受控。</p>
-  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>Nettacker</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 Nettacker 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,63.4 163.1,103.0 155.5,142.6 125.0,169.0 71.7,155.8 64.0,89.8" class="other"/>
+<p><b>简单介绍：</b>认知驱动的 LLM 自主渗透 Agent。</p>
+<p><b>能力说明：</b>强调 P-E-R、因果图谱、动态 DAG、RAG 和 HITL 可视化，适合研究更复杂的 Agent 推理闭环。</p>
+<p><b>深度解析：</b>Agent 思路先进；但依赖和复杂度高，执行安全边界不如 AutoAttack 清晰。</p>
+<p><b>取舍：</b>各有侧重。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>Nettacker</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 Nettacker 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,149.0 306.0,194.0 312.0,240.0 306.0,286.0 260.0,331.0 186.5,313.5 195.0,240.0 195.7,175.7" fill="#50fa7b30" stroke="#50fa7b" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>OWASP 自动化信息收集与漏洞评估框架。</p>
-  <p><b>对方优势：</b>多协议、多模块、Web/API、漂移检测、网络/IoT 覆盖成熟。</p>
-  <p><b>对方短板：</b>规则/模块扫描为主，缺少 AutoAttack 的 AI 计划、skill gate 与审批链。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>Pentest-Swarm-AI</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 Pentest-Swarm-AI 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,63.4 163.1,103.0 193.6,164.6 125.0,195.4 79.3,151.4 71.7,94.2" class="other"/>
+<p><b>简单介绍：</b>OWASP 自动化信息收集与漏洞评估框架。</p>
+<p><b>能力说明：</b>多协议、多模块、Web/API 和网络/IoT 覆盖成熟，偏传统扫描框架。</p>
+<p><b>深度解析：</b>扫描覆盖强；但 AI 计划、skill gate、审批和 blackboard 编排弱。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>Pentest-Swarm-AI</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 Pentest-Swarm-AI 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,149.0 306.0,194.0 377.0,240.0 333.5,313.5 260.0,318.0 195.7,304.3 221.0,240.0 195.7,175.7" fill="#bd93f930" stroke="#bd93f9" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>Go 实现的蜂群式 AI 渗透平台。</p>
-  <p><b>对方优势：</b>黑板+pheromone、真实 swarm 设计、ProjectDiscovery 工具链、MCP/Action。</p>
-  <p><b>对方短板：</b>swarm/dashboard/Postgres 后端仍偏 alpha/beta，整体比 AutoAttack 重。</p>
-  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>PentestGPT</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 PentestGPT 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,89.8 155.5,107.4 186.0,160.2 125.0,142.6 79.3,151.4 71.7,94.2" class="other"/>
+<p><b>简单介绍：</b>Go 实现的蜂群式 AI 渗透平台。</p>
+<p><b>能力说明：</b>黑板、pheromone、swarm、多 agent 和 ProjectDiscovery 工具链组合较完整。</p>
+<p><b>深度解析：</b>分布式/蜂群概念强；但系统重，alpha/beta 组件多，默认安全门控需谨慎。</p>
+<p><b>取舍：</b>各有侧重。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>PentestGPT</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 PentestGPT 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,188.0 296.8,203.2 364.0,240.0 278.4,258.4 260.0,318.0 195.7,304.3 182.0,240.0 214.0,194.0" fill="#ff79c630" stroke="#ff79c6" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>研究导向的 AI 渗透/CTF Agent。</p>
-  <p><b>对方优势：</b>USENIX 背书、PTT/迭代上下文、CTF/benchmark 叙事强。</p>
-  <p><b>对方短板：</b>原生工具编排、scope/policy/证据库/分布式执行弱于 AutoAttack。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>agentic_security</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 agentic_security 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,98.6 163.1,103.0 170.7,151.4 125.0,151.4 64.0,160.2 56.4,85.4" class="other"/>
+<p><b>简单介绍：</b>研究导向 AI 渗透 / CTF Agent。</p>
+<p><b>能力说明：</b>PTT、迭代上下文和 benchmark 叙事强，适合研究 LLM 如何辅助渗透流程。</p>
+<p><b>深度解析：</b>AI 交互强；但真实工具编排、证据库、分布式执行和 policy gate 不完整。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>agentic_security</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 agentic_security 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,201.0 306.0,194.0 338.0,240.0 287.6,267.6 260.0,344.0 177.3,322.7 182.0,240.0 204.8,184.8" fill="#f1fa8c30" stroke="#f1fa8c" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>LLM/Agent 工作流 jailbreak 与 fuzzing 扫描器。</p>
-  <p><b>对方优势：</b>LLM 安全、数据集、CI、多模态/多步攻击专项能力强。</p>
-  <p><b>对方短板：</b>不是通用 Web/网络 DAST，不覆盖 AutoAttack 的侦察-验证-报告链。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>airecon</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 airecon 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,72.2 163.1,103.0 186.0,160.2 125.0,151.4 64.0,160.2 71.7,94.2" class="other"/>
+<p><b>简单介绍：</b>LLM/Agent 工作流 jailbreak 与 fuzzing 扫描器。</p>
+<p><b>能力说明：</b>专注 LLM 安全测试，数据集、CI、多模态、多步攻击场景更强。</p>
+<p><b>深度解析：</b>LLM 安全专项深；但不是通用 Web/网络 DAST。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>airecon</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 airecon 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,162.0 306.0,194.0 364.0,240.0 287.6,267.6 260.0,344.0 195.7,304.3 208.0,240.0 195.7,175.7" fill="#ff555530" stroke="#ff5555" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>本地 Ollama + Kali Docker 的离线 AI 渗透 Agent。</p>
-  <p><b>对方优势：</b>离线隐私、Caido 集成、Kali 沙箱、本地安全知识库/记忆很强。</p>
-  <p><b>对方短板：</b>硬件和模型要求高，阶段约束偏软，分布式/审批控制不如 AutoAttack。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>amass</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 amass 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,89.8 155.5,107.4 140.2,133.8 125.0,160.2 71.7,155.8 48.8,81.0" class="other"/>
+<p><b>简单介绍：</b>本地 Ollama + Kali Docker 的离线 AI 渗透 Agent。</p>
+<p><b>能力说明：</b>隐私、本地模型、Caido 集成、Kali 沙箱和本地安全知识库体验突出。</p>
+<p><b>深度解析：</b>离线体验好；但硬件/模型要求高，分布式和审批控制偏弱。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>amass</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 amass 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,188.0 296.8,203.2 286.0,240.0 296.8,276.8 260.0,331.0 168.1,331.9 169.0,240.0 223.2,203.2" fill="#9aedfe30" stroke="#9aedfe" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>OWASP 外部资产发现与攻击面映射工具。</p>
-  <p><b>对方优势：</b>子域/资产发现深度、数据源和网络图谱能力强。</p>
-  <p><b>对方短板：</b>只做 recon/ASM，不做漏洞验证、AI 编排和报告闭环。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>autocve</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 autocve 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,98.6 163.1,103.0 186.0,160.2 125.0,169.0 71.7,155.8 56.4,85.4" class="other"/>
+<p><b>简单介绍：</b>OWASP 外部资产发现与攻击面映射工具。</p>
+<p><b>能力说明：</b>子域、数据源、图谱和外部资产发现深度很强，是 recon/ASM 专项标杆。</p>
+<p><b>深度解析：</b>ASM 深；但不做漏洞验证、AI 编排和报告闭环。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>autocve</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 autocve 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,201.0 306.0,194.0 364.0,240.0 306.0,286.0 260.0,331.0 177.3,322.7 221.0,240.0 186.5,166.5" fill="#a4ff7a30" stroke="#a4ff7a" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>面向 CVE 挖掘的源码审计与报告平台。</p>
-  <p><b>对方优势：</b>白盒源码审计、CVE 报告、前后端平台、多 Agent 审计强。</p>
-  <p><b>对方短板：</b>目标不同：偏源码/CVE，不是 AutoAttack 的黑盒 DAST；部署更重。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>caldera</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 caldera 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,107.4 170.7,98.6 178.3,155.8 125.0,186.6 64.0,160.2 48.8,81.0" class="other"/>
+<p><b>简单介绍：</b>面向 CVE 挖掘的源码审计与报告平台。</p>
+<p><b>能力说明：</b>白盒源码审计、多 Agent 分析、CVE 报告、前后端平台化能力强。</p>
+<p><b>深度解析：</b>白盒/CVE 强；但目标不是黑盒 DAST，部署和运行链路更重。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>caldera</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 caldera 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,214.0 315.2,184.8 351.0,240.0 324.3,304.3 260.0,344.0 168.1,331.9 221.0,240.0 186.5,166.5" fill="#d6acff30" stroke="#d6acff" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>MITRE ATT&amp;CK 驱动的对手仿真/C2 平台。</p>
-  <p><b>对方优势：</b>ATT&amp;CK、插件、agent、红蓝演练和后渗透自动化成熟。</p>
-  <p><b>对方短板：</b>不是 Web 黑盒 DAST；操作风险和部署复杂度远高于 AutoAttack。</p>
-  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>nuclei</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 nuclei 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,63.4 155.5,107.4 140.2,133.8 125.0,169.0 56.4,164.6 48.8,81.0" class="other"/>
+<p><b>简单介绍：</b>MITRE ATT&amp;CK 驱动的对手仿真 / C2 平台。</p>
+<p><b>能力说明：</b>ATT&amp;CK、插件、agent、红蓝演练和后渗透自动化成熟。</p>
+<p><b>深度解析：</b>仿真/后渗透强；但不是 Web DAST，操作风险和复杂度高。</p>
+<p><b>取舍：</b>各有侧重。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>nuclei</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 nuclei 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,149.0 296.8,203.2 286.0,240.0 306.0,286.0 260.0,357.0 168.1,331.9 156.0,240.0 214.0,194.0" fill="#ff9ccf30" stroke="#ff9ccf" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>高性能 YAML 模板漏洞扫描引擎。</p>
-  <p><b>对方优势：</b>模板生态、速度、多协议、CI 集成强，适合作为 AutoAttack skill。</p>
-  <p><b>对方短板：</b>单一扫描器，无 AI 规划、approval、blackboard/queue 编排。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>nuclei-templates</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 nuclei-templates 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,107.4 147.9,111.8 132.6,129.4 125.0,133.8 48.8,169.0 56.4,85.4" class="other"/>
+<p><b>简单介绍：</b>高性能 YAML 模板漏洞扫描引擎。</p>
+<p><b>能力说明：</b>模板生态、速度、多协议和 CI 集成极强，适合作为 AutoAttack 的底层 skill。</p>
+<p><b>深度解析：</b>扫描引擎强；但不是完整 Agent 编排器。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>nuclei-templates</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 nuclei-templates 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,214.0 287.6,212.4 273.0,240.0 269.2,249.2 260.0,370.0 177.3,322.7 156.0,240.0 232.4,212.4" fill="#fff59d30" stroke="#fff59d" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>nuclei 的社区模板库。</p>
-  <p><b>对方优势：</b>覆盖面巨大，CVE/KEV/云/HTTP/DNS/代码模板丰富。</p>
-  <p><b>对方短板：</b>只是内容库，不能独立执行；依赖 nuclei 和外部编排。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>osmedeus</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 osmedeus 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,63.4 163.1,103.0 170.7,151.4 125.0,204.2 64.0,160.2 64.0,89.8" class="other"/>
+<p><b>简单介绍：</b>nuclei 社区模板库。</p>
+<p><b>能力说明：</b>CVE、KEV、云、HTTP、DNS、代码模板覆盖广，是内容资产库。</p>
+<p><b>深度解析：</b>知识资产强；但不能独立执行，依赖 nuclei 和外部编排。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>osmedeus</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 osmedeus 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,149.0 306.0,194.0 338.0,240.0 342.7,322.7 260.0,344.0 186.5,313.5 221.0,240.0 186.5,166.5" fill="#ffa07a30" stroke="#ffa07a" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>声明式安全工作流编排引擎。</p>
-  <p><b>对方优势：</b>YAML 工作流、分布式、云运行、事件调度、API/UI、SAST/SARIF 很全。</p>
-  <p><b>对方短板：</b>泛化且复杂，可执行任意工作流；不如 AutoAttack 默认受控和轻量。</p>
-  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>pentestagent</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 pentestagent 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,81.0 155.5,107.4 186.0,160.2 125.0,151.4 79.3,151.4 71.7,94.2" class="other"/>
+<p><b>简单介绍：</b>声明式安全工作流编排引擎。</p>
+<p><b>能力说明：</b>YAML 工作流、分布式、云运行、事件调度、API/UI、SAST/SARIF 覆盖全面。</p>
+<p><b>深度解析：</b>工作流能力强；但泛化复杂，可执行任意工作流，默认受控性不如 AutoAttack。</p>
+<p><b>取舍：</b>各有侧重。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>pentestagent</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 pentestagent 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,175.0 296.8,203.2 364.0,240.0 287.6,267.6 260.0,318.0 195.7,304.3 195.0,240.0 195.7,175.7" fill="#7dd3fc30" stroke="#7dd3fc" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>TUI 驱动的 AI 渗透助手/多 Agent 工具。</p>
-  <p><b>对方优势：</b>Assist/Agent/Crew、浏览器/终端、MCP 自生成子 Agent、Kali Docker。</p>
-  <p><b>对方短板：</b>更像交互式通用 Agent，policy/approval/结构化证据和队列弱。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>shannon</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 shannon 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,81.0 163.1,103.0 186.0,160.2 125.0,151.4 79.3,151.4 56.4,85.4" class="other"/>
+<p><b>简单介绍：</b>TUI 驱动 AI 渗透助手 / 多 Agent 工具。</p>
+<p><b>能力说明：</b>Assist/Agent/Crew、浏览器/终端、MCP 自生成子 Agent 和 Kali Docker 适合交互式使用。</p>
+<p><b>深度解析：</b>交互 Agent 强；但结构化证据、policy/approval 和队列弱。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>shannon</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 shannon 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,175.0 306.0,194.0 364.0,240.0 287.6,267.6 260.0,318.0 177.3,322.7 208.0,240.0 204.8,184.8" fill="#c084fc30" stroke="#c084fc" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>源码感知的白盒 AI Web/API Pentester。</p>
-  <p><b>对方优势：</b>源码分析+真实 exploit 验证，报告只收可证明漏洞。</p>
-  <p><b>对方短板：</b>需要源码和 Docker；不适合纯黑盒外部资产场景。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>sqlmap</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 sqlmap 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,81.0 147.9,111.8 132.6,129.4 125.0,142.6 86.9,147.0 48.8,81.0" class="other"/>
+<p><b>简单介绍：</b>源码感知白盒 AI Web/API Pentester。</p>
+<p><b>能力说明：</b>源码分析加真实 exploit 验证，强调只报告可证明漏洞。</p>
+<p><b>深度解析：</b>白盒验证强；但需要源码和 Docker，不适合纯黑盒外部资产。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>sqlmap</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 sqlmap 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,175.0 287.6,212.4 273.0,240.0 278.4,258.4 260.0,305.0 168.1,331.9 156.0,240.0 223.2,203.2" fill="#fbbf2430" stroke="#fbbf24" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>SQL 注入检测、利用和数据库接管专用工具。</p>
-  <p><b>对方优势：</b>SQLi 深度、tamper、DB 指纹/提权/文件/命令能力远强。</p>
-  <p><b>对方短板：</b>范围极窄且侵入性高；无 AutoAttack 的编排、审批和多工具报告。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>strix</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 strix 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,63.4 163.1,103.0 193.6,164.6 125.0,169.0 71.7,155.8 56.4,85.4" class="other"/>
+<p><b>简单介绍：</b>SQL 注入检测、利用和数据库接管专用工具。</p>
+<p><b>能力说明：</b>SQLi 深度、tamper、DB 指纹、提权、文件和命令能力远强。</p>
+<p><b>深度解析：</b>SQLi 专项极深；但范围窄且侵入性高，需要外部编排和审批。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>strix</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 strix 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,149.0 306.0,194.0 377.0,240.0 306.0,286.0 260.0,331.0 177.3,322.7 221.0,240.0 186.5,166.5" fill="#34d39930" stroke="#34d399" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>面向应用的多 Agent AI pentest/修复工具。</p>
-  <p><b>对方优势：</b>SAST+DAST、PoC 验证、自动修复、CI/PR 集成、开发者体验强。</p>
-  <p><b>对方短板：</b>Docker/API/平台依赖更重，透明可审计和本地最小化不如 AutoAttack。</p>
-  <p><b>结论：</b>各有侧重；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>subfinder</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 subfinder 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,98.6 155.5,107.4 132.6,129.4 125.0,151.4 86.9,147.0 48.8,81.0" class="other"/>
+<p><b>简单介绍：</b>面向应用的多 Agent AI pentest / 修复工具。</p>
+<p><b>能力说明：</b>SAST+DAST、PoC 验证、自动修复、CI/PR 集成和开发者体验突出。</p>
+<p><b>深度解析：</b>全链路应用安全强；但 Docker/API/平台依赖重，轻量可审计性不如 AutoAttack。</p>
+<p><b>取舍：</b>各有侧重。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>subfinder</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 subfinder 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,201.0 296.8,203.2 273.0,240.0 287.6,267.6 260.0,305.0 168.1,331.9 130.0,240.0 223.2,203.2" fill="#fb718530" stroke="#fb7185" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>ProjectDiscovery 被动子域枚举工具。</p>
-  <p><b>对方优势：</b>快、轻、stdout/JSON 友好，适合流水线集成。</p>
-  <p><b>对方短板：</b>只做子域发现，不能替代 AutoAttack 的漏洞验证和报告闭环。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
-</section>
-<section class="card">
-  <h2>watchtower</h2>
-  <div class="chart"><svg viewBox="0 0 250 250" role="img" aria-label="AutoAttack 与 watchtower 雷达图">
-  <polygon points="125.0,107.4 140.2,116.2 140.2,133.8 125.0,142.6 109.8,133.8 109.8,116.2" class="grid"/>
-<polygon points="125.0,89.8 155.5,107.4 155.5,142.6 125.0,160.2 94.5,142.6 94.5,107.4" class="grid"/>
-<polygon points="125.0,72.2 170.7,98.6 170.7,151.4 125.0,177.8 79.3,151.4 79.3,98.6" class="grid"/>
-<polygon points="125.0,54.6 186.0,89.8 186.0,160.2 125.0,195.4 64.0,160.2 64.0,89.8" class="grid"/>
-<polygon points="125.0,37.0 201.2,81.0 201.2,169.0 125.0,213.0 48.8,169.0 48.8,81.0" class="grid"/>
-<line x1="125" y1="125" x2="125.0" y2="37.0" class="axis"/>
-<text x="125.0" y="17.0" text-anchor="middle" class="label">DAST闭环</text>
-<line x1="125" y1="125" x2="201.2" y2="81.0" class="axis"/>
-<text x="222.0" y="71.0" text-anchor="start" class="label">安全门控</text>
-<line x1="125" y1="125" x2="201.2" y2="169.0" class="axis"/>
-<text x="222.0" y="179.0" text-anchor="start" class="label">Agent编排</text>
-<line x1="125" y1="125" x2="125.0" y2="213.0" class="axis"/>
-<text x="125.0" y="233.0" text-anchor="middle" class="label">分布式</text>
-<line x1="125" y1="125" x2="48.8" y2="169.0" class="axis"/>
-<text x="28.0" y="179.0" text-anchor="end" class="label">知识资产</text>
-<line x1="125" y1="125" x2="48.8" y2="81.0" class="axis"/>
-<text x="28.0" y="71.0" text-anchor="end" class="label">专项深度</text>
-  <polygon points="125.0,54.6 193.6,85.4 186.0,160.2 125.0,186.6 86.9,147.0 79.3,98.6" class="auto"/>
-  <polygon points="125.0,72.2 163.1,103.0 186.0,160.2 125.0,151.4 79.3,151.4 71.7,94.2" class="other"/>
+<p><b>简单介绍：</b>ProjectDiscovery 被动子域枚举工具。</p>
+<p><b>能力说明：</b>快、轻、stdout/JSON 友好，适合作为流水线 recon 组件。</p>
+<p><b>深度解析：</b>子域发现专项极强；但无法替代验证、报告和 Agent 编排。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
+</section><section class="card">
+<h3>watchtower</h3>
+<div class="chart"><svg viewBox="0 0 520 480" role="img" aria-label="AutoAttack 与 watchtower 8维雷达图">
+<polygon points="260.0,214.0 278.4,221.6 286.0,240.0 278.4,258.4 260.0,266.0 241.6,258.4 234.0,240.0 241.6,221.6" class="grid"/>
+<polygon points="260.0,188.0 296.8,203.2 312.0,240.0 296.8,276.8 260.0,292.0 223.2,276.8 208.0,240.0 223.2,203.2" class="grid"/>
+<polygon points="260.0,162.0 315.2,184.8 338.0,240.0 315.2,295.2 260.0,318.0 204.8,295.2 182.0,240.0 204.8,184.8" class="grid"/>
+<polygon points="260.0,136.0 333.5,166.5 364.0,240.0 333.5,313.5 260.0,344.0 186.5,313.5 156.0,240.0 186.5,166.5" class="grid"/>
+<polygon points="260.0,110.0 351.9,148.1 390.0,240.0 351.9,331.9 260.0,370.0 168.1,331.9 130.0,240.0 168.1,148.1" class="grid"/>
+<line x1="260" y1="240" x2="260.0" y2="110.0" class="axis"/>
+<text x="260.0" y="60.0" text-anchor="middle" class="label"><title>是否覆盖黑盒侦察、指纹、扫描、验证、报告的完整链路</title>DAST闭环</text>
+<line x1="260" y1="240" x2="351.9" y2="148.1" class="axis"/>
+<text x="402.8" y="112.7" text-anchor="start" class="label"><title>scope、policy、审批、审计、默认安全边界是否强</title>安全门控</text>
+<line x1="260" y1="240" x2="390.0" y2="240.0" class="axis"/>
+<text x="430.0" y="240.0" text-anchor="start" class="label"><title>是否具备 planner/router/executor/analyst 的自动化协作能力</title>Agent编排</text>
+<line x1="260" y1="240" x2="351.9" y2="331.9" class="axis"/>
+<text x="402.8" y="367.3" text-anchor="start" class="label"><title>是否支持队列、worker、恢复、横向扩展和长任务治理</title>分布式执行</text>
+<line x1="260" y1="240" x2="260.0" y2="370.0" class="axis"/>
+<text x="260.0" y="420.0" text-anchor="middle" class="label"><title>是否沉淀 payload、模板、playbook、checklist、报告模板等知识</title>知识资产</text>
+<line x1="260" y1="240" x2="168.1" y2="331.9" class="axis"/>
+<text x="117.2" y="367.3" text-anchor="end" class="label"><title>在某个安全子领域是否足够深入成熟</title>专项深度</text>
+<line x1="260" y1="240" x2="130.0" y2="240.0" class="axis"/>
+<text x="16.0" y="240.0" text-anchor="start" class="label"><title>依赖少、部署简单、代码路径短、便于离线审计</title>轻量可审计</text>
+<line x1="260" y1="240" x2="168.1" y2="148.1" class="axis"/>
+<text x="117.2" y="112.7" text-anchor="end" class="label"><title>Web/UI/API、可视化、交互式工作台、报告体验成熟度</title>产品体验</text>
+<polygon points="260.0,136.0 342.7,157.3 364.0,240.0 324.3,304.3 260.0,305.0 186.5,313.5 143.0,240.0 204.8,184.8" class="auto"/>
+<polygon points="260.0,162.0 306.0,194.0 364.0,240.0 287.6,267.6 260.0,318.0 195.7,304.3 195.0,240.0 204.8,184.8" fill="#e5e7eb30" stroke="#e5e7eb" stroke-width="2.4"/>
 </svg></div>
-  <p class="pos"><b>定位：</b>LangGraph 多 Agent 渗透自动化 CLI。</p>
-  <p><b>对方优势：</b>23 个工具包装、Planner/Worker/Analyst、SQLite 记忆、PDF 报告。</p>
-  <p><b>对方短板：</b>简化版 Agent 框架，分布式、approval、skill 路由和安全门控弱于 AutoAttack。</p>
-  <p><b>结论：</b>AutoAttack 整体更均衡；AutoAttack 的核心优势仍是受控黑盒 DAST 闭环。</p>
+<p><b>简单介绍：</b>LangGraph 多 Agent 渗透自动化 CLI。</p>
+<p><b>能力说明：</b>Planner/Worker/Analyst、23 个工具包装、SQLite 记忆和 PDF 报告组成简化 Agent 框架。</p>
+<p><b>深度解析：</b>Agent 框架完整度不错；但分布式、approval、skill 路由和安全门控弱于 AutoAttack。</p>
+<p><b>取舍：</b>AutoAttack 综合更均衡。AutoAttack 应优先保持受控黑盒 DAST 闭环，只吸收必要知识资产或底层工具能力。</p>
 </section></div>
-</main>
-</body>
-</html>
+<script>
+(()=>{const w=document.querySelector('.mega-wrap');if(!w)return;const shapes=[...w.querySelectorAll('.mega polygon')].filter(p=>p.querySelector('title')),items=[...w.querySelectorAll('.mega-legend span')],all=[...shapes,...items],clear=()=>{w.classList.remove('is-hovering');all.forEach(e=>e.classList.remove('is-active'))},show=name=>{w.classList.add('is-hovering');all.forEach(e=>e.classList.toggle('is-active',e.dataset.name===name))};shapes.forEach(p=>{const name=p.querySelector('title').textContent.trim();p.dataset.name=name;p.classList.add('mega-series');p.tabIndex=0;p.addEventListener('mouseenter',()=>show(name));p.addEventListener('focus',()=>show(name));p.addEventListener('mouseleave',clear);p.addEventListener('blur',clear)});items.forEach(i=>{const name=i.textContent.trim();i.dataset.name=name;i.tabIndex=0;i.addEventListener('mouseenter',()=>show(name));i.addEventListener('focus',()=>show(name));i.addEventListener('mouseleave',clear);i.addEventListener('blur',clear)})})();
+</script>
+</main></body></html>
